@@ -5,11 +5,19 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
-set(SOURCES
-    src/main.cpp
+set(CLIENT_SOURCES
+    client/main.cpp
 )
 
-add_executable(${PROJECT_NAME} 
-    ${SOURCES}
+set(SERVER_SOURCES
+    server/main.cpp
+)
+
+add_executable("${PROJECT_NAME}_CLIENT"
+    ${CLIENT_SOURCES}
+)
+
+add_executable("${PROJECT_NAME}_SERVER"
+    ${SERVER_SOURCES}
 )
 
