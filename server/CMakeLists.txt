@@ -1,22 +1,20 @@
 set( SERVER ${PROJECT_NAME}_server)
 
+set( SERVER_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/server/include/)
 
 set( SOURCES 
     src/main.cpp
 )
 
-set( HEADERS
-)
-
 add_executable(${SERVER}
     ${SOURCES}
-    ${HEADERS}
 )
 
-#message("AAAAAAAAAAAAAAAAAA ${PROJECT_CONFIG_PATH}")
+message("AAAAAAAAAAAAAAAAAA ${CMAKE_SOURCE_DIR}")
 
 target_include_directories(${SERVER} 
     PUBLIC 
     ${PROJECT_CONFIG_PATH}
+    ${SERVER_INCLUDE_DIR}
 )
 
