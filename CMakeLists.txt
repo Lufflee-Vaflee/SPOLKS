@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.11)
 project(SPOVM)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(PROFECT_CONFIG_PATH "")
+set(PROJECT_CONFIG_PATH "")
 
 function(generate_config)
     if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux" OR ${CMAKE_SYSTEM_NAME} STREQUAL "Windows")

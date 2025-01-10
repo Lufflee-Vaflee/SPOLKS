@@ -11,12 +11,10 @@ void signal_handler(int SIGNUM) {
 }
 
 int main() {
-    Server<OS, 8080> server{};
+    tcp::Server<OS, 8080> server{};
 
     signal(SIGINT, signal_handler);
     server.run(g_shutting_down);
-
-    std::cout << "hello from server\n";
 
     return 0;
 }

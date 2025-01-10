@@ -1,5 +1,11 @@
+#pragma once
+
 #include <iostream>
 #include <cstring>
+#include <vector>
+#include <memory>
+
+#include <poll.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
@@ -8,7 +14,18 @@
 
 #include "config.hpp"
 
-template<OS_t OS, std::size_t PORT = 8080>
+namespace tcp {
+
+template<OS_t OS, std::size_t PORT = 8080, std::size_t TIMEOUT = 1000>
+class Server;
+
+}
+
+#include "ServerHandler.hpp"
+
+namespace tcp {
+
+template<OS_t OS, std::size_t PORT, std::size_t TIMEOUT>
 class Server {
    public:
     Server() {
@@ -31,6 +48,12 @@ class Server {
             close(m_socket);
             throw "Bind Failed";
         }
+
+    }
+
+    ~Server() {
+        std::cout << "stoping server\n";
+        close(m_socket);
     }
 
     void run(std::sig_atomic_t& shutting_down) {
@@ -41,27 +64,56 @@ class Server {
 
         std::cout << "Server listening on port " << PORT << std::endl;
 
+        pollfd server_pollfd = {m_socket, POLLIN, 0};
+        m_pollingFD.push_back(server_pollfd);
+
         while(shutting_down != 1) {
-            sleep(1);
-            socklen_t addrlen = sizeof(m_address);
-            int client_socket = accept(m_socket, (struct sockaddr*)&m_address, &addrlen);
-            if (client_socket < 0) {
-                std::cout << "error accepting client: " << errno << " skipped\n";
+
+            int activity = poll(m_pollingFD.data(), m_pollingFD.size(), TIMEOUT);
+
+            if (activity < 0) {
+                perror("Poll failed");
+                break;
+            }
+
+            if (activity == 0) {
+                // Timeout occurred, you can perform other tasks
+                std::cout << "No activity, waiting..." << std::endl;
                 continue;
             }
 
-            std::cout << "new client connected\n";
+            for(std::size_t i = 0; i < m_pollingFD.size(); ++i) {
+                if(m_pollingFD[i].revents & POLLIN) {
+                    
+                }
+            }
         }
+
+        m_pollingFD.clear();
     }
 
-    ~Server() {
-        std::cout << "stoping server\n";
-        close(m_socket);
-    }
+   protected:
+    using Interface = HandlerInterface<Server>;
+    friend Interface;
+    //A "little overenginiered" way of splitting class functionality access between 
+    //server delegates(handlers) and other parts of program.
+    //First one by that has additional, but limited access provided by 3 methods declared below.
+    //protected key word has no direct usage here, just to draw the attention to this side-effect on class state
+    
+    int closeConnection(pollfd const& pollFD);
+    int registerConnection(pollfd const& pollFD);
+    int sendMessage(std::vector<uint8_t> const& data);
 
    private:
     int m_socket;
     sockaddr_in m_address{};
+    std::vector<pollfd> m_pollingFD;
+
+    AcceptHandler<Server> m_acceptHandler = AcceptHandler<Server>(Interface(*this));
+    ClientHandler<Server> m_clientHandler = ClientHandler<Server>(Interface(*this));
 
     static constexpr unsigned BACKLOG = 128;
 };
+
+}
+
