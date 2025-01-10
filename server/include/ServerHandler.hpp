@@ -1,23 +1,26 @@
 #pragma once
 
-#include <iostream>
 #include "Server.hpp"
+
+#include "poll.h"
+#include <vector>
+#include <cstdint>
 
 namespace tcp {
 
 template<typename Server>
 class HandlerInterface;
 
-template<OS_t OS, std::size_t PORT, std::size_t TIMEOUT>
-class HandlerInterface<Server<OS, PORT, TIMEOUT>>{
-    using Server_t = Server<OS, PORT, TIMEOUT>;
+template<ENV_CONFIG CONFIG>
+class HandlerInterface<Server<CONFIG>>{
+    using Server_t = Server<CONFIG>;
     friend Server_t;
-    template<typename server, typename impl> friend class ServerHandler;
 
    private:
     HandlerInterface(Server_t& ref) :
         m_ref(ref) {}
 
+   public:
     inline int closeConnection(pollfd const& pollFD) const {
         m_ref.closeConnection(pollFD);
     }
@@ -30,7 +33,7 @@ class HandlerInterface<Server<OS, PORT, TIMEOUT>>{
         m_ref.sendMessage(data);
     }
 
-    private:
+   private:
     Server_t& m_ref;
 };
 
@@ -39,16 +42,30 @@ class ServerHandler {
    public:
     using Interface = HandlerInterface<Server>;
 
-    ServerHandler(Interface interface) :
-        m_interface(interface) {}
-
     inline int operator()(pollfd const& pollFD) {
         return static_cast<ServerHandlerImpl*>(this)->impl(pollFD);
     }
 
    private:
-    int impl(pollfd const& pollFD) {
+    virtual int impl(pollfd const& pollFD) {
         throw "Unimplemented exception";
+    }
+};
+
+template<typename Server>
+class AcceptHandler final : public ServerHandler<Server, AcceptHandler<Server>> {
+   public:
+    using Interface = HandlerInterface<Server>;
+    using Base = ServerHandler<Server, AcceptHandler<Server>>;
+
+    AcceptHandler(Interface interface) :
+        Base(),
+        m_interface(interface) {}
+
+   private:
+    int impl(pollfd const& pollDF) {
+        m_interface.closeConnection(pollDF);
+        return 0;
     }
 
    private:
@@ -56,32 +73,22 @@ class ServerHandler {
 };
 
 template<typename Server>
-class AcceptHandler final : public ServerHandler<Server, AcceptHandler<Server>> {
-   public:
-    using Base = ServerHandler<Server, AcceptHandler<Server>>;
-
-    AcceptHandler(Base::Interface interface) :
-        Base(interface) {}
-
-   private:
-    int impl(pollfd const& pollDF) {
-        return 0;
-    }
-};
-
-template<typename Server>
 class ClientHandler final : public ServerHandler<Server, ClientHandler<Server>> {
    public:
+    using Interface = HandlerInterface<Server>;
     using Base = ServerHandler<Server, ClientHandler<Server>>;
 
-    ClientHandler(Base::Interface interface) :
-        Base(interface) {}
+    ClientHandler(Interface interface) :
+        Base(),
+        m_interface(interface) {}
 
    private:
     int impl(pollfd const& pollDF) {
         return 0;
     }
+
+   private:
+    Interface m_interface;
 };
 
 }
-

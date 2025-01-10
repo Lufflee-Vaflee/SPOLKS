@@ -32,4 +32,11 @@ consteval OS_t reflection() {
 
 }
 
-constexpr OS_t OS = reflection();
+struct ENV_CONFIG {
+    constexpr ENV_CONFIG(OS_t os) :
+        OS(os) {}
+
+    OS_t OS;
+};
+
+constexpr auto ENV = ENV_CONFIG { reflection() };

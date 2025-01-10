@@ -1,7 +1,7 @@
 #include <iostream>
 #include <csignal>
 
-#include "Server.hpp"
+#include "ServerLinux.hpp"
 
 std::sig_atomic_t g_shutting_down = 0;
 
@@ -11,7 +11,9 @@ void signal_handler(int SIGNUM) {
 }
 
 int main() {
-    tcp::Server<OS, 8080> server{};
+    tcp::ServerConfig conf { 8080, 1000 };
+
+    tcp::Server<ENV> server{ conf };
 
     signal(SIGINT, signal_handler);
     server.run(g_shutting_down);
