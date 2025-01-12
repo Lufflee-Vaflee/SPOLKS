@@ -1,5 +1,6 @@
 #include <iostream>
 #include <csignal>
+#include <chrono>
 
 #include "ServerLinux.hpp"
 
@@ -11,7 +12,16 @@ void signal_handler(int SIGNUM) {
 }
 
 int main() {
-    tcp::ServerConfig conf { 8080, 1000 };
+    using namespace std::chrono_literals;
+    tcp::ServerConfig conf { 
+        8080, 
+        5s,
+        5min,
+        10min,
+        10,
+        128
+    };
+
 
     tcp::Server<ENV> server{ conf };
 

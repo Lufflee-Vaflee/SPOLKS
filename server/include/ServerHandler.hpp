@@ -21,12 +21,12 @@ class HandlerInterface<Server<CONFIG>>{
         m_ref(ref) {}
 
    public:
-    inline int closeConnection(pollfd const& pollFD) const {
-        m_ref.closeConnection(pollFD);
+    inline int closeConnection(int newClinetFD) const {
+        m_ref.markAsClosed(newClinetFD);
     }
 
-    inline int registerConnection(pollfd const& pollFD) const {
-        m_ref.registerConnection(pollFD);
+    inline int registerConnection(int newClientFD) const {
+        m_ref.registerConnection(newClientFD);
     }
 
     inline int sendMessage(std::vector<uint8_t> const& data) const {
@@ -40,8 +40,6 @@ class HandlerInterface<Server<CONFIG>>{
 template<typename Server, typename ServerHandlerImpl>
 class ServerHandler {
    public:
-    using Interface = HandlerInterface<Server>;
-
     inline int operator()(pollfd const& pollFD) {
         return static_cast<ServerHandlerImpl*>(this)->impl(pollFD);
     }
@@ -52,43 +50,5 @@ class ServerHandler {
     }
 };
 
-template<typename Server>
-class AcceptHandler final : public ServerHandler<Server, AcceptHandler<Server>> {
-   public:
-    using Interface = HandlerInterface<Server>;
-    using Base = ServerHandler<Server, AcceptHandler<Server>>;
-
-    AcceptHandler(Interface interface) :
-        Base(),
-        m_interface(interface) {}
-
-   private:
-    int impl(pollfd const& pollDF) {
-        m_interface.closeConnection(pollDF);
-        return 0;
-    }
-
-   private:
-    Interface m_interface;
-};
-
-template<typename Server>
-class ClientHandler final : public ServerHandler<Server, ClientHandler<Server>> {
-   public:
-    using Interface = HandlerInterface<Server>;
-    using Base = ServerHandler<Server, ClientHandler<Server>>;
-
-    ClientHandler(Interface interface) :
-        Base(),
-        m_interface(interface) {}
-
-   private:
-    int impl(pollfd const& pollDF) {
-        return 0;
-    }
-
-   private:
-    Interface m_interface;
-};
 
 }
