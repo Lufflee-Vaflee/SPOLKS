@@ -1,7 +1,6 @@
 #pragma once
 
 #include <iostream>
-#include <cstring>
 #include <vector>
 #include <unordered_map>
 #include <chrono>
@@ -19,8 +18,6 @@
 #include "ClientHandler.hpp"
 
 namespace tcp {
-
-using socket_t = int;
 
 struct socketMetaData {
     using timePoint = std::chrono::time_point<std::chrono::system_clock>;
@@ -165,7 +162,7 @@ class Server<CONFIG> {
         it->second.lastUse = clock::now();
     }
 
-    int sendMessage(socket_t socket, std::vector<uint8_t> const& data);
+    int sendMessage(socket_t socket, std::string const& data);
 
    private:
 

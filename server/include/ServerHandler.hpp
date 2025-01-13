@@ -3,8 +3,7 @@
 #include "Server.hpp"
 
 #include "poll.h"
-#include <vector>
-#include <cstdint>
+#include <string>
 
 namespace tcp {
 
@@ -29,8 +28,8 @@ class HandlerInterface<Server<CONFIG>>{
         m_ref.registerConnection(newClientFD);
     }
 
-    inline int sendMessage(std::vector<uint8_t> const& data) const {
-        m_ref.sendMessage(data);
+    inline int sendMessage(socket_t socket, std::string const& data) const {
+        m_ref.sendMessage(socket, data);
     }
 
    private:

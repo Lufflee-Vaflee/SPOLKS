@@ -6,6 +6,8 @@
 
 namespace tcp {
 
+using socket_t = int;
+
 struct ServerConfig {
     using duration = std::chrono::duration<std::uint64_t>;
 

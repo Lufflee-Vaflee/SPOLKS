@@ -18,7 +18,7 @@ class AcceptHandler final : public ServerHandler<Server, AcceptHandler<Server>> 
         m_interface(interface) {}
 
    private:
-    int impl(pollfd const& serverFD) {
+    inline int impl(pollfd const& serverFD) {
         sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
 
@@ -30,6 +30,8 @@ class AcceptHandler final : public ServerHandler<Server, AcceptHandler<Server>> 
             perror("Poll accept request failed");
             return -1;
         }
+
+        m_interface.sendMessage(client_fd, "Oh hello there");
 
         return 0;
     }
