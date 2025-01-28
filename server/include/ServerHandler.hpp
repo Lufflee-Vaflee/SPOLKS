@@ -20,11 +20,11 @@ class HandlerInterface<Server<CONFIG>>{
         m_ref(ref) {}
 
    public:
-    inline int closeConnection(int newClinetFD) const {
-        m_ref.markAsClosed(newClinetFD);
+    inline int closeConnection(socket_t newClinetFD) const {
+        m_ref.closeConnection(newClinetFD);
     }
 
-    inline int registerConnection(int newClientFD) const {
+    inline int registerConnection(socket_t newClientFD) const {
         m_ref.registerConnection(newClientFD);
     }
 

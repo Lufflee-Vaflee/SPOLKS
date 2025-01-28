@@ -1,6 +1,5 @@
 #include <iostream>
 #include <csignal>
-#include <chrono>
 
 #include "ServerLinux.hpp"
 
@@ -21,7 +20,6 @@ int main() {
         10,
         128
     };
-
 
     tcp::Server<ENV> server{ conf };
 

@@ -218,6 +218,7 @@ class Server<CONFIG> {
     void closeAll() {
         std::cout << "closing all connections\n";
         checkForClear(true);
+        std::cout << "closing active connections\n";
         for(auto it = m_pollingFD.begin(); it != m_pollingFD.end(); ++it) {
             close(it->fd);
         }
