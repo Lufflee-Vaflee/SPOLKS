@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ServerHandler.hpp"
+#include "ServerInterface.hpp"
 #include <unistd.h>
 
 #include <string>
@@ -8,19 +8,17 @@
 
 namespace tcp {
 
-template<typename Server>
-class ClientHandler final : public ServerHandler<Server, ClientHandler<Server>> {
+class ClientHandler final : public ServerHandler {
    public:
-    using Interface = HandlerInterface<Server>;
-    using Base = ServerHandler<Server, ClientHandler<Server>>;
 
-    ClientHandler(Interface interface) :
-        Base(),
-        m_interface(interface) {}
+    ClientHandler(ServerInterface& ref, socket_t socket) :
+        ServerHandler(),
+        m_ref(ref),
+        m_socket(socket) {}
 
    private:
-    inline int impl(pollfd const& clientPoll) {
-        std::optional<std::string> result = readAll(clientPoll.fd);
+    virtual error_t operator()() override final {
+        auto result = readAll();
 
         if(!result.has_value()) {
             return -1;
@@ -28,31 +26,30 @@ class ClientHandler final : public ServerHandler<Server, ClientHandler<Server>> 
     }
 
    private:
-    std::optional<std::string> readAll(int socket) {
-        constexpr std::size_t CAPACITY = 1024;
+    std::optional<data_t> readAll() {
         char buff[CAPACITY];
 
         
-        std::string result;
+        data_t result;
         do {
-            int bytes_read = read(socket, buff, sizeof(buff) - 1);
-            if(bytes_read == 0) {
-                std::cout << "gracefull socket shutdown: " << socket << "\n";
-                m_interface.closeConnection(socket);
-                return std::nullopt;
-            }
+            //int bytes_read = read(m_socket, buff, sizeof(buff) - 1);
+            //if(bytes_read == 0) {
+            //    std::cout << "gracefull socket shutdown: " << m_socket << "\n";
+            //    m_ref.closeConnection(m_socket);
+            //    return std::nullopt;
+            //}
 
-            if(bytes_read < 0) {
-                if(errno == EWOULDBLOCK || errno == EAGAIN) {
-                    break;
-                }
+            //if(bytes_read < 0) {
+            //    if(errno == EWOULDBLOCK || errno == EAGAIN) {
+            //        break;
+            //    }
 
-                perror("Error while reading occured");
-                return std::nullopt;
-            }
+            //    perror("Error while reading occured");
+            //    return std::nullopt;
+            //}
 
-            buff[bytes_read] = '\0';
-            result.append(buff);
+            //buff[bytes_read] = '\0';
+            //result.append(buff);
         } while(true);
 
         return result;
@@ -60,8 +57,12 @@ class ClientHandler final : public ServerHandler<Server, ClientHandler<Server>> 
 
 
    private:
-    Interface m_interface;
+    ServerInterface& m_ref;
+    socket_t m_socket;
+
+    data_t m_accumulate;
+
+   private:
+    static constexpr std::size_t CAPACITY = 1024;
 };
-
 }
-

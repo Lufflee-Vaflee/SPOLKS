@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <chrono>
 #include <algorithm>
+#include <memory>
 
 #include <poll.h>
 #include <sys/socket.h>
@@ -14,23 +15,27 @@
 #include <fcntl.h>
 
 #include "config.hpp"
+#include "Server.hpp"
+#include "ServerInterface.hpp"
 #include "AcceptHandler.hpp"
 #include "ClientHandler.hpp"
 
 namespace tcp {
 
-struct socketMetaData {
+struct SocketMetaData {
     using timePoint = std::chrono::time_point<std::chrono::system_clock>;
     using pollIndex = std::vector<pollfd>::iterator;
 
     timePoint lastUse;
     pollIndex index;
     bool softClose;
+
+    std::unique_ptr<ServerHandler> clientHandler;
 };
 
 template<ENV_CONFIG CONFIG>
 requires (CONFIG.OS == OS_t::LINUX)
-class Server<CONFIG> {
+class Server<CONFIG> final : public ServerInterface {
    private:
     using clock = std::chrono::system_clock;
     using timepoint = std::chrono::time_point<clock>;
@@ -58,6 +63,7 @@ class Server<CONFIG> {
             throw "Bind Failed";
         }
 
+        m_acceptHandler = std::make_unique<AcceptHandler>(*static_cast<ServerInterface*>(this), m_socket);
     }
 
     ~Server() {
@@ -105,15 +111,8 @@ class Server<CONFIG> {
         closeAll();
     }
 
-   protected:
-    using Interface = HandlerInterface<Server>;
-    friend Interface;
-    //A "little overenginiered" way of splitting class functionality access between 
-    //server delegates(handlers) and other parts of program.
-    //First one by that has additional, but limited access provided by 3 methods declared below.
-    //protected key word has no direct usage here, just to draw the attention to this side-effect on class state
-
-    int closeConnection(socket_t clientFD) {
+   private:
+    virtual int closeConnection(socket_t clientFD) override final {
         if(close(clientFD) < 0) {
             perror("Error closing socket");
             return -1;
@@ -130,7 +129,7 @@ class Server<CONFIG> {
         return 0;
     }
 
-    int registerConnection(socket_t clientFD) {
+    virtual int registerConnection(socket_t clientFD) override final {
         m_pollingFD.push_back({
             clientFD,
             POLLIN,
@@ -139,9 +138,11 @@ class Server<CONFIG> {
 
         auto it = m_FDindexing.emplace( 
             clientFD, 
-            socketMetaData {
+            SocketMetaData {
                 clock::now(),
-                --m_pollingFD.end()
+                --m_pollingFD.end(),
+                false,
+                std::make_unique<ClientHandler>(*static_cast<ServerInterface*>(this), clientFD)
             }
         );
 
@@ -162,7 +163,9 @@ class Server<CONFIG> {
         it->second.lastUse = clock::now();
     }
 
-    int sendMessage(socket_t socket, std::string const& data);
+    virtual int sendMessage(socket_t socket, std::string const& data) override final {
+        
+    }
 
    private:
 
@@ -232,14 +235,14 @@ class Server<CONFIG> {
     sockaddr_in m_address{};
 
     std::vector<pollfd> m_pollingFD;
-    std::unordered_map<socket_t, socketMetaData> m_FDindexing;
+    std::unordered_map<socket_t, SocketMetaData> m_FDindexing;
 
     ServerConfig m_config;
     timepoint m_lastClear = clock::now();
     std::size_t m_uncleardPolls = 0;
 
-    AcceptHandler<Server> m_acceptHandler = AcceptHandler<Server>(Interface(*this));
-    ClientHandler<Server> m_clientHandler = ClientHandler<Server>(Interface(*this));
+    std::unique_ptr<ServerHandler> m_acceptHandler;
+    //ClientHandler<Server> m_clientHandler = ClientHandler<Server>(Interface(*this));
 };
 
 }

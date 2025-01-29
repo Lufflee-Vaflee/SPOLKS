@@ -7,6 +7,8 @@
 namespace tcp {
 
 using socket_t = int;
+using data_t = std::vector<uint8_t>;
+using error_t = int;
 
 struct ServerConfig {
     using duration = std::chrono::duration<std::uint64_t>;
