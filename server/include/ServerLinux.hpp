@@ -22,6 +22,8 @@
 
 namespace tcp {
 
+namespace {
+
 struct SocketMetaData {
     using timePoint = std::chrono::time_point<std::chrono::system_clock>;
     using pollIndex = std::vector<pollfd>::iterator;
@@ -32,6 +34,8 @@ struct SocketMetaData {
 
     std::unique_ptr<ServerHandler> clientHandler;
 };
+
+}
 
 template<ENV_CONFIG CONFIG>
 requires (CONFIG.OS == OS_t::LINUX)
@@ -163,7 +167,7 @@ class Server<CONFIG> final : public ServerInterface {
         it->second.lastUse = clock::now();
     }
 
-    virtual int sendMessage(socket_t socket, std::string const& data) override final {
+    virtual int sendMessage(socket_t socket, data_t const& data) override final {
         
     }
 

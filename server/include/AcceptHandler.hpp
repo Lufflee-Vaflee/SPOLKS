@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Protocol.hpp"
+
 #include "ServerInterface.hpp"
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -28,7 +30,19 @@ class AcceptHandler final : public ServerHandler {
             return -1;
         }
 
-        m_ref.sendMessage(client_fd, "Oh hello there");
+        using namespace Protocol;
+
+        data_t responce;
+        char message[] = "Oh hello there!";
+        auto it = serialize(std::back_inserter(responce), Header{
+            CUR_VERSION,
+            ECHO,
+            sizeof(message)
+        });
+
+        serialize(it, message);
+
+        m_ref.sendMessage(client_fd, responce);
 
         return 0;
     }

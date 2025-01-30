@@ -1,8 +1,26 @@
 #include <cstdint>
 
+#include "Protocol.hpp"
+
 namespace Protocol {
 
+struct UploadRequestHeader {
+    Header head;
+
+    enum code_t : uint64_t {
+        INIT        = 0,
+        TRANSFER    = 1,
+        CANCEL      = 2
+    };
+
+    code_t code;
+};
+
+static_assert(sizeof(UploadRequestHeader) == sizeof(Header) + 8);
+
 struct UploadRequestInit {
+    UploadRequestHeader head;
+
     enum mode_t : uint32_t {
         NEW         = 0,
         CONTINUE    = 1,
@@ -16,34 +34,27 @@ struct UploadRequestInit {
     char   name[64];
 };
 
+static_assert(sizeof(UploadRequestInit) == sizeof(UploadRequestHeader) + 80);
+
 struct UploadRequestTransfer {
+    UploadRequestHeader head;
+
     uint64_t start;
     uint32_t resource_id;
-    //uint64_t payload_size;        //calculated by common header
-
-    //payload       payload_size - sizeof(UploadRequest) - sizeof(Header)
 };
 
-struct UploadRequestCancel {};
+static_assert(sizeof(UploadRequestTransfer) == sizeof(UploadRequestHeader) + 16);
 
-union UploadRequestBody {
-    UploadRequestTransfer transfer;
-    UploadRequestInit init;
-    UploadRequestCancel cancel;
+struct UploadRequestCancel {
+    UploadRequestHeader head;
 };
 
-struct UploadRequest {
-    enum code_t : uint32_t {
-        INIT        = 0,
-        TRANSFER    = 1,
-        CANCEL      = 2
-    };
+static_assert(sizeof(UploadRequestCancel) == sizeof(UploadRequestHeader));
 
-    code_t code;
-    UploadRequestBody body;
-};
 
 struct UploadResponce {
+    Header head;
+
     enum code_t : uint32_t {
         SUCCESS                     = 0,
         CONFIRMED                   = 1,
@@ -68,6 +79,8 @@ struct UploadResponce {
     uint32_t full_crc32;
     uint32_t resource_id;
 };
+
+static_assert(sizeof(UploadResponce) == sizeof(Header) + 40);
 
 }
 

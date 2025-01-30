@@ -1,10 +1,14 @@
 #pragma once
 
 #include "ServerInterface.hpp"
+#include "ClientService.hpp"
+#include "Protocol.hpp"
+
 #include <unistd.h>
 
 #include <string>
 #include <iostream>
+#include <array>
 
 namespace tcp {
 
@@ -18,41 +22,66 @@ class ClientHandler final : public ServerHandler {
 
    private:
     virtual error_t operator()() override final {
-        auto result = readAll();
+        using namespace Protocol;
 
-        if(!result.has_value()) {
-            return -1;
+        error_t error = readAll();
+        if(error != 0 ) {
+            return error;
         }
+
+        if(m_accumulate.size() < sizeof(Header)) {
+            return 0;
+        }
+
+        auto head = deserialize<Header>(m_accumulate.begin()).first;
+        if(head.version != CUR_VERSION) {
+            data_t data;
+            serialize(std::back_inserter(data), Header{
+                CUR_VERSION,
+                command_t::CLOSE,
+                0
+            });
+
+            m_ref.sendMessage(m_socket, data);
+            return 0;
+        }
+
+        std::size_t expected_size = head.payload_size + sizeof(Header);
+
+        if(m_accumulate.size() < expected_size) {
+            return 0;
+        }
+
+        return 0;
     }
 
    private:
-    std::optional<data_t> readAll() {
-        char buff[CAPACITY];
+    error_t readAll() {
+        std::array<uint8_t, CAPACITY> buff;
 
-        
-        data_t result;
         do {
-            //int bytes_read = read(m_socket, buff, sizeof(buff) - 1);
-            //if(bytes_read == 0) {
-            //    std::cout << "gracefull socket shutdown: " << m_socket << "\n";
-            //    m_ref.closeConnection(m_socket);
-            //    return std::nullopt;
-            //}
+            std::size_t bytes_read = read(m_socket, buff.data(), sizeof(buff) - 1);
 
-            //if(bytes_read < 0) {
-            //    if(errno == EWOULDBLOCK || errno == EAGAIN) {
-            //        break;
-            //    }
+            if(bytes_read == 0) {
+                std::cout << "gracefull socket shutdown: " << m_socket << "\n";
+                //possible ownership conflict after rewriting on multithreading, better remove close connection from interface and return close code
+                m_ref.closeConnection(m_socket);        
+                return -1;
+            }
 
-            //    perror("Error while reading occured");
-            //    return std::nullopt;
-            //}
+            if(bytes_read < 0) {
+                if(errno == EWOULDBLOCK || errno == EAGAIN) {
+                    break;
+                }
 
-            //buff[bytes_read] = '\0';
-            //result.append(buff);
+                perror("Error while reading occured");
+                return -1;
+            }
+
+            m_accumulate.insert(m_accumulate.end(), buff.begin(), buff.begin() + bytes_read);
         } while(true);
 
-        return result;
+        return 0;
     }
 
 
@@ -63,6 +92,6 @@ class ClientHandler final : public ServerHandler {
     data_t m_accumulate;
 
    private:
-    static constexpr std::size_t CAPACITY = 1024;
+    static constexpr std::size_t CAPACITY = 2048;
 };
 }
