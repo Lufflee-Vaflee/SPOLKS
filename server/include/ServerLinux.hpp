@@ -6,6 +6,7 @@
 #include <chrono>
 #include <algorithm>
 #include <memory>
+#include <limits>
 
 #include <poll.h>
 #include <sys/socket.h>
@@ -167,12 +168,72 @@ class Server<CONFIG> final : public ServerInterface {
         it->second.lastUse = clock::now();
     }
 
-    virtual int sendMessage(socket_t socket, data_t const& data) override final {
-        
+    virtual error_t sendMessage(socket_t socket, const_iterator begin, const_iterator end) override final {
+        auto base = begin.base();
+        std::size_t size = end - begin;
+
+        auto code = send(socket, base, size, 0);
+        if(code == -1) {
+            if(errno == EAGAIN || errno == EWOULDBLOCK) {
+                std::cout << "[socket]: " << socket << "EAGAIN or EWOULDBLOCK after poll happend, skipped\n";
+                return 0;
+            }
+
+            perror("send message failed");
+            return code;
+        }
+
+        return 0;
+    }
+
+    virtual error_t recieveMessage(socket_t socket, data_t& buf) override final {
+        constexpr std::size_t INITIAL_CAPACITY = 2048;
+
+        std::size_t effective_size = buf.size();
+        std::size_t amortize_size = INITIAL_CAPACITY;
+        do {
+            if(effective_size > ULLONG_MAX - amortize_size) {
+                amortize_size = ULLONG_MAX - effective_size;
+            }
+
+            buf.resize(effective_size + amortize_size);
+            int bytes_read = read(socket, buf.end().base(), amortize_size);
+
+            if(bytes_read == 0) {
+                std::cout << "gracefull socket shutdown: " << socket << "\n";
+                //possible ownership conflict after rewriting on multithreading, better remove close connection from interface and return close code
+                //this->closeConnection(socket);        
+                return -1;
+            }
+
+            if(bytes_read < 0) {
+                if(errno == EWOULDBLOCK || errno == EAGAIN) {
+                    break;
+                }
+
+                perror("Error while reading occured");
+                return -1;
+            }
+
+            effective_size += bytes_read;
+            buf.resize(effective_size); //restore real size
+            if(buf.size() == ULLONG_MAX) {
+                break;
+            }
+
+            if(bytes_read == amortize_size)  {
+                if(amortize_size >= ((ULLONG_MAX / 2) - 1)) {
+                    amortize_size = ULLONG_MAX;
+                } else {
+                    amortize_size *= 2;
+                }
+            }
+        } while(true);
+
+        return 0;
     }
 
    private:
-
     void checkForClear(bool force) {
         std::cout << "Check for clear\n";
         bool timeCheck = (clock::now() - m_lastClear) > m_config.forceClearDuration;

@@ -14,6 +14,7 @@ add_executable(${SERVER}
 
 message("AAAAAAAAAAAAAAAAAA ${CMAKE_SOURCE_DIR}")
 
+
 target_include_directories(${SERVER} 
     PUBLIC 
     ${PROJECT_CONFIG_PATH}

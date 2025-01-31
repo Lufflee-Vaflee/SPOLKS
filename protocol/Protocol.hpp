@@ -48,5 +48,17 @@ std::pair<T, std::vector<uint8_t>::const_iterator> deserialize(std::vector<uint8
     return std::pair<T, std::vector<uint8_t>::const_iterator>{ result, next };
 }
 
+using iterator = std::vector<uint8_t>::iterator;
+
+template<typename T>
+requires std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T> && std::is_trivially_constructible_v<T>
+std::pair<T& , iterator> map(iterator it) {
+    auto raw = reinterpret_cast<uint8_t*>(it.base());
+
+    auto result = new (raw)T{};
+
+    return std::pair<T, iterator>{ *result, it + sizeof(T)};
+}
 
 }
+

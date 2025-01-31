@@ -42,7 +42,7 @@ class AcceptHandler final : public ServerHandler {
 
         serialize(it, message);
 
-        m_ref.sendMessage(client_fd, responce);
+        m_ref.sendMessage(client_fd, responce.begin(), responce.end());
 
         return 0;
     }

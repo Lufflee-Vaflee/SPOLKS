@@ -6,7 +6,7 @@ namespace tcp {
 
 class ClientService {
    public:
-    data_t operator()(data_t&& data) {
+    data_t operator()(data_t& data) {
     }
 };
 
