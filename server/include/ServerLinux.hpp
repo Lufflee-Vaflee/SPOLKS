@@ -117,7 +117,7 @@ class Server<CONFIG> final : public ServerInterface {
     }
 
    private:
-    virtual int closeConnection(socket_t clientFD) override final {
+    virtual error_t closeConnection(socket_t clientFD) override final {
         if(close(clientFD) < 0) {
             perror("Error closing socket");
             return -1;
@@ -134,7 +134,7 @@ class Server<CONFIG> final : public ServerInterface {
         return 0;
     }
 
-    virtual int registerConnection(socket_t clientFD) override final {
+    virtual error_t registerConnection(socket_t clientFD) override final {
         m_pollingFD.push_back({
             clientFD,
             POLLIN,
@@ -196,7 +196,7 @@ class Server<CONFIG> final : public ServerInterface {
                 amortize_size = ULLONG_MAX - effective_size;
             }
 
-            buf.resize(effective_size + amortize_size);
+            buf.resize(effective_size + amortize_size);  //couldn't use capacity, because technically its UB
             int bytes_read = read(socket, buf.end().base(), amortize_size);
 
             if(bytes_read == 0) {

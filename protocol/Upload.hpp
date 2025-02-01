@@ -14,6 +14,11 @@ struct UploadRequestHeader {
     };
 
     code_t code;
+
+    inline void endianTransform() {
+        head.endianTransform();
+        TransformEndianess(code);
+    }
 };
 
 static_assert(sizeof(UploadRequestHeader) == sizeof(Header) + 8);
@@ -32,6 +37,11 @@ struct UploadRequestInit {
     uint64_t size;
 
     char   name[64];
+
+    inline void endianTransform() {
+        head.endianTransform();
+        TransformEndianess(mode, crc32, size);
+    }
 };
 
 static_assert(sizeof(UploadRequestInit) == sizeof(UploadRequestHeader) + 80);
@@ -41,12 +51,21 @@ struct UploadRequestTransfer {
 
     uint64_t start;
     uint32_t resource_id;
+
+    inline void endianTransform() {
+        head.endianTransform();
+        TransformEndianess(start, resource_id);
+    }
 };
 
 static_assert(sizeof(UploadRequestTransfer) == sizeof(UploadRequestHeader) + 16);
 
 struct UploadRequestCancel {
     UploadRequestHeader head;
+
+    inline void endianTransform() {
+        head.endianTransform();
+    }
 };
 
 static_assert(sizeof(UploadRequestCancel) == sizeof(UploadRequestHeader));
@@ -78,6 +97,20 @@ struct UploadResponce {
     uint64_t full_length;
     uint32_t full_crc32;
     uint32_t resource_id;
+
+    inline void endianTransform() {
+        head.endianTransform();
+        TransformEndianess(
+            code,
+            intermediate_crc32,
+            confirmed_chunk_start,
+            requested_chunk_start,
+
+            full_length,
+            full_crc32,
+            resource_id
+       );
+    }
 };
 
 static_assert(sizeof(UploadResponce) == sizeof(Header) + 40);
