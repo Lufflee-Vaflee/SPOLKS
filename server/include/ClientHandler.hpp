@@ -29,8 +29,10 @@ class ClientHandler final : public ServerHandler {
             return error;
         }
 
-        while(m_accumulate.size() < sizeof(Header)) {
-            auto head = deserialize<Header>(m_accumulate.begin()).first;
+        auto to_process = std::make_shared<data_t>(std::move(m_accumulate));
+        std::size_t processed = 0;
+        while(to_process->size() - processed < sizeof(Header)) {
+            auto head = deserialize<Header>(to_process->begin()).first;
             if(head.version != CUR_VERSION) {
                 data_t data;
                 serialize(std::back_inserter(data), Header{
@@ -43,16 +45,28 @@ class ClientHandler final : public ServerHandler {
                 return -1;
             }
 
-            std::size_t expected_size = head.payload_size + sizeof(Header);
-
-            if(m_accumulate.size() < expected_size) {
-                return 0;
+            uint32_t expected_size = head.payload_size + sizeof(Header);
+            if(processed + expected_size > to_process->size()) {
+                break;
             }
 
-            data_t query = std::move(m_accumulate);
-            std::copy(query.begin() + expected_size, query.end(), m_accumulate.begin());
-            query.resize(expected_size);
-            m_service(query);
+            auto begin = to_process->begin() + processed;
+            auto end = begin + expected_size;
+            data_t responce = m_service(to_process, begin, end);
+            m_ref.sendMessage(m_socket, responce.begin(), responce.end());
+
+            processed += expected_size;
+        }
+
+        if(processed == 0) {
+            m_accumulate = std::move(*to_process);
+            return 0;
+        }
+
+        //restore unprocessd tail
+        if(processed < to_process->size()) {
+            auto begin = to_process->begin() + processed;
+            std::copy(begin, to_process->end(), m_accumulate.begin());
         }
 
         return 0;
