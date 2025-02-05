@@ -4,11 +4,11 @@
 #include <atomic>
 #include <functional>
 #include <condition_variable>
-#include <deque>
+#include <queue>
 
 namespace tcp {
 
-using task = std::function<void(std::atomic<bool>& close)>;
+using task_t = std::move_only_function<void(std::atomic<bool>& close)>;
 
 
 class DummyThreadPool {
@@ -36,14 +36,13 @@ class DummyThreadPool {
         }
         started = true;
 
-        for(std::size_t i = 0; i < m_concurrency - 1; i++) { 
-            m_pool.emplace_back([this](){
+        for(std::size_t i = 0; i < std::thread::hardware_concurrency() - 1; i++) { 
+            std::thread thr([this](){
                 pool_entry();
             });
-        }
 
-        //add_task(initital_task)
-        //return;
+            thr.detach();
+        }
 
         pool_entry();
     }
@@ -53,13 +52,43 @@ class DummyThreadPool {
             throw "AAA";
         }
 
-        initiate_close = true;
+        m_cond.notify_all();
+    }
 
+    void go(task_t&& task) {
+        {
+            std::lock_guard lock {m_mutex};
+            m_tasks.push(std::move(task));
+        }
+        m_cond.notify_one();
     }
 
    private:
     void pool_entry() {
-        
+        m_current_thread_amount++;
+
+        while(true) {
+            std::move_only_function<void(std::atomic<bool>&)> task;
+            {
+                std::unique_lock lock {m_mutex};
+                m_cond.wait(lock, [this] {
+                    return !m_tasks.empty() || initiate_close;
+                });
+
+                task = std::move(m_tasks.front());
+
+                if(!task) {
+                    return;
+                }
+            }
+
+            try {
+
+            } catch(std::exception) {
+                continue;
+            }
+
+        }
     }
 
 
@@ -67,11 +96,12 @@ class DummyThreadPool {
     std::atomic<bool> started = false;
     std::atomic<bool> initiate_close = false;
 
-    std::vector<std::thread> m_pool;
-    std::size_t const m_concurrency = std::thread::hardware_concurrency();
+    std::atomic<std::size_t> m_current_thread_amount = 1;
+    std::atomic<std::size_t> m_currently_used = 0;
 
-    std::condition_variable cond;
-    std::deque<task> m_tasks;
+    std::condition_variable m_cond;
+    std::mutex m_mutex;
+    std::queue<task_t> m_tasks;
 };
 
 void signal_handler(int SIGNUM) {
