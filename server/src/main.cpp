@@ -2,19 +2,20 @@
 #include <csignal>
 
 #include "ServerLinux.hpp"
+#include "ThreadPool.hpp"
 
-std::sig_atomic_t g_shutting_down = 0;
+using namespace pool;
 
 void signal_handler(int SIGNUM) {
     std::cout << "Shutting server down, SIGNUM: " << SIGNUM << "\n";
-    g_shutting_down = 1;
+    DummyThreadPool::getInstance().stop();
 }
 
 int main() {
     using namespace std::chrono_literals;
     tcp::ServerConfig conf { 
-        8080, 
-        5s,
+        8080,
+        50ms,
         5min,
         10min,
         10,
@@ -22,9 +23,15 @@ int main() {
     };
 
     tcp::Server<ENV> server{ conf };
+    auto& pool = DummyThreadPool::getInstance();
 
     signal(SIGINT, signal_handler);
-    server.run(g_shutting_down);
+
+    pool.reserve_service([&server](atomic_state const& state){
+        server.run(state);
+    });
+
+    pool.start();
 
     return 0;
 }

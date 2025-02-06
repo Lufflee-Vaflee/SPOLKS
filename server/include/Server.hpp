@@ -11,7 +11,7 @@ using data_t = std::vector<uint8_t>;
 using error_t = long;
 
 struct ServerConfig {
-    using duration = std::chrono::duration<std::uint64_t>;
+    using duration = std::chrono::milliseconds;
 
     std::uint16_t port;
     duration pollTimeout;

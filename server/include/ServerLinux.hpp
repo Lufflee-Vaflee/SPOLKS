@@ -21,6 +21,8 @@
 #include "AcceptHandler.hpp"
 #include "ClientHandler.hpp"
 
+#include "ThreadPool.hpp"
+
 namespace tcp {
 
 namespace {
@@ -44,6 +46,8 @@ class Server<CONFIG> final : public ServerInterface {
    private:
     using clock = std::chrono::system_clock;
     using timepoint = std::chrono::time_point<clock>;
+    using atomic_state = pool::atomic_state;
+    using state_t = pool::state_t;
 
    public:
     Server(ServerConfig const& config) :
@@ -77,7 +81,7 @@ class Server<CONFIG> final : public ServerInterface {
         closeAll();
     }
 
-    void run(std::sig_atomic_t& shutting_down) {
+    void run(atomic_state const& shutting_down) {
         if (listen(m_socket, m_config.backlog) < 0) {
             std::cout << errno << '\n';
             throw "Listen failed";
@@ -88,8 +92,8 @@ class Server<CONFIG> final : public ServerInterface {
         pollfd server_pollfd = {m_socket, POLLIN, 0};
         m_pollingFD.push_back(server_pollfd);
 
-        while(shutting_down != 1) {
-            int activity = poll(m_pollingFD.data(), m_pollingFD.size(), m_config.port);
+        while(shutting_down == state_t::Started) {
+            int activity = poll(m_pollingFD.data(), m_pollingFD.size(), m_config.pollTimeout.count());
 
             if (activity < 0) {
                 perror("Poll failed");
