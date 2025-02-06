@@ -31,6 +31,8 @@ endfunction()
 
 generate_config()
 
+add_subdirectory(thread_pool)
+
 add_subdirectory(server)
 
 add_subdirectory(client)
