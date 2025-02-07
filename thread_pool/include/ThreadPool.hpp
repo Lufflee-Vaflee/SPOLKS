@@ -7,7 +7,7 @@
 
 namespace pool {
 
-enum state_t : uint8_t {
+enum state_t : int {
     Stopped,
     Launching,
     Started,

@@ -16,22 +16,23 @@ DummyThreadPool::~DummyThreadPool() {
 void DummyThreadPool::start() {
     //Stopped
     std::cout << "try start Thread Pool\n";
-    if(m_state != state_t::Stopped) {
-        throw "Called start on non-stopped pool";
+
+    state_t expected = state_t::Stopped;
+    if(!m_state.compare_exchange_strong(expected, state_t::Launching)) {
+        throw "called start on non-stopped thread-pool";
     }
 
-    std::cout << "launching thread Pool\n";
+    std::cout << "launching thread-pool";
 
     //Launching
+    std::vector<std::thread> handlers;
     m_state = state_t::Launching;
-    for(std::size_t i = 1; i < std::thread::hardware_concurrency(); i++) { 
-        std::thread thr([this](){
+    for(std::size_t i = 1; i < std::thread::hardware_concurrency(); i++) {
+        handlers.emplace_back([this](){
             auto id = ++m_current_thread_amount;
             pool_entry(id);
             m_current_thread_amount--;
         });
-
-        thr.detach();
     }
 
     //Started
@@ -39,8 +40,8 @@ void DummyThreadPool::start() {
     pool_entry(0);
 
     //Stopping
-    while(m_current_thread_amount != 0) {
-        std::this_thread::yield();
+    for(std::size_t i = 0; i < handlers.size(); ++i) {
+        handlers[i].join();
     }
 
     while(!m_tasks.empty()) {
@@ -53,14 +54,9 @@ void DummyThreadPool::start() {
 }
 
 void DummyThreadPool::stop() {
-    if(m_state != state_t::Started) {
+    auto expected = state_t::Started;
+    if(!m_state.compare_exchange_strong(expected, state_t::Stopping)) {
         throw "Called stopped on non started pool";
-    }
-
-    {
-        std::lock_guard lock {m_mutex};
-        m_tasks.push(task_t{});
-        m_state = state_t::Stopping;
     }
 
     m_cond.notify_all();
@@ -83,10 +79,6 @@ bool DummyThreadPool::go(task_t&& task) {
         return false;
     }
 
-    {
-        std::lock_guard lock {m_mutex};
-        m_tasks.push(std::move(task));
-    }
     m_cond.notify_one();
 
     return true;
@@ -118,11 +110,6 @@ void DummyThreadPool::pool_entry(std::size_t id) {
             }
 
             task = std::move(m_tasks.front());
-
-            if(!task) {
-                std::cout << "Thread with id: " << id << " closing because of stop task\n";
-                return;
-            }
 
             std::cout << "Thread with id: " << id << " acquired task\n";
             m_tasks.pop();
