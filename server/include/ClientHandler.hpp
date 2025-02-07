@@ -6,10 +6,6 @@
 
 #include <unistd.h>
 
-#include <string>
-#include <iostream>
-#include <array>
-
 namespace tcp {
 
 class ClientHandler final : public ServerHandler {
@@ -50,10 +46,14 @@ class ClientHandler final : public ServerHandler {
                 break;
             }
 
-            auto begin = to_process->begin() + processed;
+            auto begin = to_process->begin() + processed + sizeof(head);
             auto end = begin + expected_size;
-            data_t responce = m_service(to_process, begin, end);
-            m_ref.sendMessage(m_socket, responce.begin(), responce.end());
+
+            //will be threaded
+            {
+                data_t responce = service::processQuery(to_process, head.command, begin, end);
+                m_ref.sendMessage(m_socket, responce.begin(), responce.end());
+            }
 
             processed += expected_size;
         }
@@ -63,7 +63,7 @@ class ClientHandler final : public ServerHandler {
             return 0;
         }
 
-        //restore unprocessd tail
+        //restore unprocessed tail
         if(processed < to_process->size()) {
             auto begin = to_process->begin() + processed;
             std::copy(begin, to_process->end(), m_accumulate.begin());
@@ -74,10 +74,8 @@ class ClientHandler final : public ServerHandler {
 
    private:
     ServerInterface& m_ref;
-    socket_t m_socket;
-
+    SocketAccess m_socket;
     data_t m_accumulate;
-    ClientService m_service;
 
    private:
     static constexpr std::size_t INITIAL_CAPACITY = 2048;

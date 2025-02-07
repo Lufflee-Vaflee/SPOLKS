@@ -6,7 +6,6 @@
 #include <chrono>
 #include <algorithm>
 #include <memory>
-#include <limits>
 
 #include <poll.h>
 #include <sys/socket.h>
@@ -27,7 +26,7 @@ namespace tcp {
 
 namespace {
 
-struct SocketMetaData {
+struct SessionData {
     using timePoint = std::chrono::time_point<std::chrono::system_clock>;
     using pollIndex = std::vector<pollfd>::iterator;
 
@@ -35,7 +34,7 @@ struct SocketMetaData {
     pollIndex index;
     bool softClose;
 
-    std::unique_ptr<ServerHandler> clientHandler;
+    std::shared_ptr<ClientHandler> clientHandler;
 };
 
 }
@@ -121,62 +120,84 @@ class Server<CONFIG> final : public ServerInterface {
     }
 
    private:
-    virtual error_t closeConnection(socket_t clientFD) override final {
-        if(close(clientFD) < 0) {
-            perror("Error closing socket");
-            return -1;
+    virtual error_t closeConnection(SocketAccess const& socket) override final {
+        {
+            std::lock_guard lock(socket);
+            if(close(socket) < 0) {
+                perror("Error closing socket");
+                return -1;
+            }
         }
 
-        auto it = m_FDindexing.find(clientFD);
-        if(it == m_FDindexing.end()) {
-            throw("Indexing error occured");
-        }
+        {
+            std::lock_guard lock{m_indexingMutex};
+            auto it = m_FDindexing.find(socket);
+            if(it == m_FDindexing.end()) {
+                throw("Indexing error occured");
+            }
 
-        it->second.softClose = true;
+            it->second.softClose = true;
+        }
 
         m_uncleardPolls++;
         return 0;
     }
 
-    virtual error_t registerConnection(socket_t clientFD) override final {
+    virtual error_t registerConnection(socket_t socket_raw) override final {
+        //no need in lock, only run/accept thread accessing
         m_pollingFD.push_back({
-            clientFD,
+            socket_raw ,
             POLLIN,
             0
         });
 
-        auto it = m_FDindexing.emplace( 
-            clientFD, 
-            SocketMetaData {
-                clock::now(),
-                --m_pollingFD.end(),
-                false,
-                std::make_unique<ClientHandler>(*static_cast<ServerInterface*>(this), clientFD)
-            }
-        );
+        {
+            std::scoped_lock lock{m_indexingMutex};
+            auto it = m_FDindexing.emplace( 
+                socket_raw, 
+                SessionData {
+                    clock::now(),
+                    --m_pollingFD.end(),
+                    false,
+                    std::make_shared<ClientHandler>(
+                        *static_cast<ServerInterface*>(this), 
+                        socket_raw
+                    )
+                }
+            );
 
-        if(it.second) {
-            throw "Indexing error try registered same socket";
+            if(it.second) {
+                return -1;
+            }
         }
 
         return 0;
     }
 
+    //anyone
     void updateUsage(socket_t clientFD) {
+        std::lock_guard lock{m_indexingMutex};
         auto it = m_FDindexing.find(clientFD);
 
         if(it == m_FDindexing.find(clientFD)) {
-            throw "Indexing error occured";
+           return; 
         }
 
         it->second.lastUse = clock::now();
     }
 
-    virtual error_t sendMessage(socket_t socket, const_iterator begin, const_iterator end) override final {
+    //anyone
+    virtual error_t sendMessage(SocketAccess const& socket, const_iterator begin, const_iterator end) override final {
+        updateUsage(socket);
+
         auto base = begin.base();
         std::size_t size = end - begin;
 
-        auto code = send(socket, base, size, 0);
+        error_t code;
+        {
+            std::lock_guard lock {socket};
+            code = send(socket, base, size, 0);
+        }
         if(code == -1) {
             if(errno == EAGAIN || errno == EWOULDBLOCK) {
                 std::cout << "[socket]: " << socket << "EAGAIN or EWOULDBLOCK after poll happend, skipped\n";
@@ -190,11 +211,14 @@ class Server<CONFIG> final : public ServerInterface {
         return 0;
     }
 
-    virtual error_t recieveMessage(socket_t socket, data_t& buf) override final {
+    //anyone
+    virtual error_t recieveMessage(SocketAccess const& socket, data_t& buf) override final {
         constexpr std::size_t INITIAL_CAPACITY = 2048;
 
         std::size_t effective_size = buf.size();
         std::size_t amortize_size = INITIAL_CAPACITY;
+        std::lock_guard lock{socket};
+        updateUsage(socket);
         do {
             if(effective_size > ULLONG_MAX - amortize_size) {
                 amortize_size = ULLONG_MAX - effective_size;
@@ -238,6 +262,7 @@ class Server<CONFIG> final : public ServerInterface {
     }
 
    private:
+    //only run thread
     void checkForClear(bool force) {
         std::cout << "Check for clear\n";
         bool timeCheck = (clock::now() - m_lastClear) > m_config.forceClearDuration;
@@ -247,6 +272,7 @@ class Server<CONFIG> final : public ServerInterface {
         }
     }
 
+    //only run thread
     void performPollClear() {
         std::cout << "initiating poll cleanup\n";
         if(m_pollingFD.size() <= 1) {
@@ -257,27 +283,31 @@ class Server<CONFIG> final : public ServerInterface {
         std::size_t softClear = 0;
         std::size_t hardClear = 0;
 
-        std::remove_if(m_pollingFD.begin() + 1, m_pollingFD.end(), [this, timeout, &softClear, &hardClear](pollfd poll) {
-            auto it = m_FDindexing.find(poll.fd);
-            if(it == m_FDindexing.end()) {
-                throw "Indexing error occured";
-            }
+        {
+            std::lock_guard lock{m_indexingMutex};
 
-            if(it->second.softClose) {
-                softClear++;
-                m_FDindexing.erase(it);
-                return true;
-            }
+            std::remove_if(m_pollingFD.begin() + 1, m_pollingFD.end(), [this, timeout, &softClear, &hardClear](pollfd poll) {
+                auto it = m_FDindexing.find(poll.fd);
+                if(it == m_FDindexing.end()) {
+                    throw "Indexing error occured";
+                }
 
-            if((clock::now() - it->second.lastUse) > timeout) {
-                hardClear++;
-                close(poll.fd);
-                m_FDindexing.erase(it);
-                return true;
-            }
+                if(it->second.softClose) {
+                    softClear++;
+                    m_FDindexing.erase(it);
+                    return true;
+                }
 
-            return false;
-        });
+                if((clock::now() - it->second.lastUse) > timeout) {
+                    hardClear++;
+                    close(poll.fd);
+                    m_FDindexing.erase(it);
+                    return true;
+                }
+
+                return false;
+            });
+        }
 
         std::cout << "Soft clear polls: " << softClear << "\n";
         std::cout << "Expected: " << m_uncleardPolls << "\n";
@@ -287,6 +317,7 @@ class Server<CONFIG> final : public ServerInterface {
         m_lastClear = clock::now();
     }
 
+    //only run thread
     void closeAll() {
         std::cout << "closing all connections\n";
         checkForClear(true);
@@ -303,15 +334,15 @@ class Server<CONFIG> final : public ServerInterface {
     socket_t m_socket;
     sockaddr_in m_address{};
 
+    mutable std::mutex m_indexingMutex;
     std::vector<pollfd> m_pollingFD;
-    std::unordered_map<socket_t, SocketMetaData> m_FDindexing;
+    std::unordered_map<socket_t, SessionData> m_FDindexing;
 
     ServerConfig m_config;
     timepoint m_lastClear = clock::now();
     std::size_t m_uncleardPolls = 0;
 
     std::unique_ptr<ServerHandler> m_acceptHandler;
-    //ClientHandler<Server> m_clientHandler = ClientHandler<Server>(Interface(*this));
 };
 
 }

@@ -32,15 +32,26 @@ concept needTransform =
 
 template<typename T>
 back_insert serialize(back_insert it, T const& obj) {
-    if constexpr (needTransform<T> && NEED_ENDIAN_TRANSFORM) {
+    back_insert next = it;
+    if(!NEED_ENDIAN_TRANSFORM){
+        auto raw = reinterpret_cast<const uint8_t* const>(std::addressof(obj));
+        next = std::copy(raw, raw + sizeof(T), it);
+    }
+
+    if constexpr (std::is_integral_v<T>) {
+        T transforming = std::byteswap(obj);
+        auto raw = reinterpret_cast<const uint8_t* const>(std::addressof(transforming));
+        next = std::copy(raw, raw + sizeof(T), it);
+    }
+
+    if constexpr (needTransform<T>) {
         T transforming = obj;
         transforming.endianTransform();
         auto raw = reinterpret_cast<const uint8_t* const>(std::addressof(transforming));
-        return std::copy(raw, raw + sizeof(T), it);
+        next = std::copy(raw, raw + sizeof(T), it);
     }
 
-    auto raw = reinterpret_cast<const uint8_t* const>(std::addressof(obj));
-    return std::copy(raw, raw + sizeof(T), it);
+    return next;
 }
 
 template<typename T>
