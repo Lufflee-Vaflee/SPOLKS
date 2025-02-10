@@ -18,6 +18,7 @@ class AcceptHandler final : public ServerHandler {
 
    private:
     virtual error_t operator()() override final {
+        std::lock_guard lock {m_socket};
         sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
 
@@ -49,7 +50,7 @@ class AcceptHandler final : public ServerHandler {
 
    private:
     ServerInterface& m_ref;
-    socket_t m_socket;
+    SocketAccess m_socket;
 };
 
 }

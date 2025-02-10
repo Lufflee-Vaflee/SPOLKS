@@ -36,10 +36,10 @@ class ServerInterface {
     using const_iterator = std::vector<uint8_t>::const_iterator;
 
    public:
-    virtual error_t closeConnection(SocketAccess const& socket) = 0;
+    virtual void closeConnection(socket_t socket) = 0;
     virtual error_t registerConnection(socket_t raw_socket) = 0;
-    virtual error_t sendMessage(SocketAccess const& socket, const_iterator begin, const_iterator end) = 0;
-    virtual error_t recieveMessage(SocketAccess const& socket, data_t& buf) = 0;
+    virtual error_t sendMessage(socket_t socket, const_iterator begin, const_iterator end) = 0;
+    virtual error_t recieveMessage(socket_t socket, data_t& buf) = 0;
 
    public:
     virtual ~ServerInterface() = default;

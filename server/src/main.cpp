@@ -27,8 +27,8 @@ int main() {
 
     signal(SIGINT, signal_handler);
 
-    pool.reserve_service([&server, &pool](atomic_state const& state){
-        server.run(state);
+    pool.reserve_service([&server, &pool](){
+        server.run(pool.get_state_ref());
         pool.stop();
     });
 

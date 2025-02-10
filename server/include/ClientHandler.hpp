@@ -16,7 +16,7 @@ class ClientHandler final : public ServerHandler {
         m_ref(ref),
         m_socket(socket) {}
 
-   private:
+   public:
     virtual error_t operator()() override final {
         using namespace Protocol;
 
@@ -70,6 +70,14 @@ class ClientHandler final : public ServerHandler {
         }
 
         return 0;
+    }
+
+    void lock() {
+        m_socket.lock();
+    }
+
+    void unlock() {
+        m_socket.unlock();
     }
 
    private:

@@ -15,7 +15,7 @@ enum state_t : int {
 };
 
 using atomic_state = std::atomic<state_t>;
-using task_t = std::move_only_function<void(atomic_state const& close)>;
+using task_t = std::move_only_function<void()>;
 
 class DummyThreadPool {
    private:
@@ -36,10 +36,11 @@ class DummyThreadPool {
     void stop();
     void reserve_service(task_t&& service);
     bool go(task_t&& service);
+    atomic_state const& get_state_ref();
 
 
    private:
-    void pool_entry(std::size_t id);
+    void pool_entry();
 
    private:
     atomic_state m_state = state_t::Stopped;

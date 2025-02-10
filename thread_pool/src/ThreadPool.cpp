@@ -29,15 +29,15 @@ void DummyThreadPool::start() {
     m_state = state_t::Launching;
     for(std::size_t i = 1; i < std::thread::hardware_concurrency(); i++) {
         handlers.emplace_back([this](){
-            auto id = ++m_current_thread_amount;
-            pool_entry(id);
+            ++m_current_thread_amount;
+            pool_entry();
             m_current_thread_amount--;
         });
     }
 
     //Started
     m_state = state_t::Started;
-    pool_entry(0);
+    pool_entry();
 
     //Stopping
     for(std::size_t i = 0; i < handlers.size(); ++i) {
@@ -51,6 +51,10 @@ void DummyThreadPool::start() {
     //Stopped
     m_threads_to_start = std::thread::hardware_concurrency();
     m_state = state_t::Stopped;
+}
+
+atomic_state const& DummyThreadPool::get_state_ref() {
+    return m_state;
 }
 
 void DummyThreadPool::stop() {
@@ -84,7 +88,8 @@ bool DummyThreadPool::go(task_t&& task) {
     return true;
 }
 
-void DummyThreadPool::pool_entry(std::size_t id) {
+void DummyThreadPool::pool_entry() {
+    auto id = std::this_thread::get_id();
     std::cout << "starting thread with id: " << id << " \n";
 
     //theoretically, not to much sence in that, but still spooky to start consuming tasks before all threads initialized
@@ -122,7 +127,7 @@ void DummyThreadPool::pool_entry(std::size_t id) {
 
         try {
             std::cout << "Thread with id: " << id << " start to execute task\n";
-            task(m_state);
+            task();
         } catch(std::exception) {
             continue;
         }
