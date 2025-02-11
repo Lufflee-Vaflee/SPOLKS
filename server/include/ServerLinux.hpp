@@ -83,7 +83,7 @@ class Server<CONFIG> final : public ServerInterface {
         }
 
         int flags = fcntl(m_socket, F_GETFL, 0);
-        fcntl(m_socket, F_SETFL, flags | O_NONBLOCK);
+        fcntl(m_socket, F_SETFL, flags | O_NONBLOCK | SO_REUSEADDR);
 
         m_address.sin_family = AF_INET;
         m_address.sin_addr.s_addr = INADDR_ANY;
@@ -101,7 +101,6 @@ class Server<CONFIG> final : public ServerInterface {
     ~Server() {
         std::cout << "Server shutting down\n";
         close(m_socket);
-        closeAll();
     }
 
     void run(atomic_state const& shutting_down) {
@@ -138,7 +137,12 @@ class Server<CONFIG> final : public ServerInterface {
                     if(revents & POLLIN) {
                         if(i == 0) {
                             pool.go([this](){
-                                (*m_acceptHandler)();
+                                error_t code = (*m_acceptHandler)();
+
+                                if (code < 0) {
+                                    std::cout << "critical error on accept socket, stopping server\n";
+                                    pool.stop();
+                                }
                             });
                             continue;
                         }
@@ -164,7 +168,7 @@ class Server<CONFIG> final : public ServerInterface {
 
                     if(revents & POLLNVAL) {
                         perror("poll on closed socket");
-                        continue;
+                        throw "Critical error";
                     }
                 }
             }
@@ -187,11 +191,13 @@ class Server<CONFIG> final : public ServerInterface {
                 return;
             }
 
-            //this writing may seams strange under shared_lock, but this flag is atomic
-            //shared mutexes here works more as "non-invalidating" data-structures operations
-            it->second.m_softClose = true;
-            m_uncleardPolls++;
-        });
+            //this writing may seams strange under shared_lock, write is protected by atomic
+            //shared lock here works more as "non-invalidating" data-structures operations
+            bool expected = false;
+            if(it->second.m_softClose.compare_exchange_strong(expected, true)) {
+                m_uncleardPolls++;
+            }
+       });
 
         return;
     }
@@ -238,13 +244,10 @@ class Server<CONFIG> final : public ServerInterface {
             updateUsage(socket);
         });
 
-        auto base = begin.base();
         std::size_t size = end - begin;
-
-        auto code = send(socket, base, size, 0);
+        auto code = send(socket, begin.base(), size, 0);
         if(code == -1) {
             if(errno == EAGAIN || errno == EWOULDBLOCK) {
-                std::cout << "[socket]: " << socket << "EAGAIN or EWOULDBLOCK after poll happend, skipped\n";
                 return 0;
             }
 
@@ -275,14 +278,12 @@ class Server<CONFIG> final : public ServerInterface {
 
             if(bytes_read == 0) {
                 std::cout << "gracefull socket shutdown: " << socket << "\n";
-                //possible ownership conflict after rewriting on multithreading, better remove close connection from interface and return close code
-                //this->closeConnection(socket);
                 return -1;
             }
 
             if(bytes_read < 0) {
                 if(errno == EWOULDBLOCK || errno == EAGAIN) {
-                    break;
+                   return 0; 
                 }
 
                 perror("Error while reading occured");
@@ -348,13 +349,7 @@ class Server<CONFIG> final : public ServerInterface {
                 }
 
                 if((clock::now() - it->second.m_lastUse.load()) > timeout) {
-                    softClear++;
-                    if(shutdown(poll.fd, SHUT_RDWR) < 0) {
-                        perror("shutdown time-out failed");
-                    }
-
-                    it->second.m_softClose = true;
-                    return true;
+                    closeConnection(poll.fd);
                 }
 
                 return false;
@@ -375,7 +370,7 @@ class Server<CONFIG> final : public ServerInterface {
         checkForClear(true);
         std::cout << "closing active connections\n";
         for(auto it = m_pollingFD.begin(); it != m_pollingFD.end(); ++it) {
-            close(it->fd);
+            //close(it->fd);
         }
         m_pollingFD.clear();
         m_FDindexing.clear();

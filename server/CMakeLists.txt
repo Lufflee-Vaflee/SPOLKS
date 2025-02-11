@@ -6,6 +6,8 @@ set( PROTOCOL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/protocol)
 
 set( SOURCES 
     src/main.cpp
+    src/ClientHandler.cpp
+    src/AcceptHandler.cpp
 )
 
 add_executable(${SERVER}

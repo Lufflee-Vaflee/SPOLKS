@@ -104,7 +104,7 @@ void DummyThreadPool::pool_entry() {
         {
             std::cout << "Thread with id: " << id << " waiting for task on condition_variable\n";
             std::unique_lock lock {m_mutex};
-            m_cond.wait(lock, [id, this] {
+            m_cond.wait(lock, [id, this] () {
                 std::cout << "Thread with id: " << id << " woke up\n";
                 return !m_tasks.empty() || m_state != state_t::Started;
             });
@@ -128,7 +128,11 @@ void DummyThreadPool::pool_entry() {
         try {
             std::cout << "Thread with id: " << id << " start to execute task\n";
             task();
-        } catch(std::exception) {
+        } catch(std::exception exc) {
+            std::cout << "exception occured: " << exc.what() << "\n";
+            continue;
+        } catch(const char* err) {
+            std::cout << "exception occured: " << err << "\n";
             continue;
         }
     }

@@ -2,8 +2,6 @@
 
 #include "Server.hpp"
 
-#include "poll.h"
-
 #include <mutex>
 
 namespace tcp {

@@ -29,7 +29,6 @@ int main() {
 
     pool.reserve_service([&server, &pool](){
         server.run(pool.get_state_ref());
-        pool.stop();
     });
 
     pool.start();
