@@ -3,6 +3,7 @@
 #include "ServerInterface.hpp"
 #include "ThreadPool.hpp"
 #include "Protocol.hpp"
+#include "SocketAccess.hpp"
 
 namespace tcp {
 

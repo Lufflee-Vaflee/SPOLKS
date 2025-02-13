@@ -1,5 +1,8 @@
 #pragma once
 
+#include "config.hpp"
+#include "ThreadPool.hpp"
+
 #include <iostream>
 #include <vector>
 #include <unordered_map>
@@ -15,61 +18,18 @@
 #include <csignal>
 #include <fcntl.h>
 
-#include "config.hpp"
 #include "Server.hpp"
 #include "ServerInterface.hpp"
+#include "SocketAccess.hpp"
 #include "AcceptHandler.hpp"
 #include "ClientHandler.hpp"
+#include "SessionData.hpp"
 
-#include "ThreadPool.hpp"
 
 namespace tcp {
 
-namespace {
-
-class SessionData {
-   public:
-    using timePoint = std::atomic<std::chrono::time_point<std::chrono::system_clock>>;
-    using pollIndex = std::vector<pollfd>::iterator;
-
-   public:
-    SessionData(timePoint const& lastUse, share_socket socket, std::shared_ptr<ClientHandler> handler) :
-        m_lastUse(lastUse.load()),
-        m_socket(socket),
-        m_clientHandler(handler),
-        m_softClose(false) {}
-
-    SessionData(SessionData const&) = delete;
-    SessionData& operator=(SessionData const&) = delete;
-
-    SessionData(SessionData&& other) :
-        m_lastUse(other.m_lastUse.load()),
-        m_socket(std::move(other.m_socket)),
-        m_clientHandler(std::move(other.m_clientHandler)),
-        m_softClose(other.m_softClose.load()) {}
-
-    SessionData& operator=(SessionData&& other) {
-        m_lastUse = other.m_lastUse.load();
-        m_socket = std::move(other.m_socket);
-        m_clientHandler = std::move(other.m_clientHandler);
-        m_softClose = other.m_softClose.load();
-
-        return *this;
-    }
-
-   public:
-    timePoint m_lastUse;
-
-    share_socket m_socket;
-    std::shared_ptr<ClientHandler> m_clientHandler;
-
-    std::atomic<bool> m_softClose = false;
-};
-
-}
-
-template<ENV_CONFIG CONFIG>
-requires (CONFIG.OS == OS_t::LINUX)
+template<ENV::CONFIG_t CONFIG>
+requires (CONFIG.OS == ENV::OS_t::LINUX)
 class Server<CONFIG> final : public ServerInterface {
    private:
     using clock = std::chrono::system_clock;

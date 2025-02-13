@@ -8,6 +8,9 @@ set( SOURCES
     src/main.cpp
     src/ClientHandler.cpp
     src/AcceptHandler.cpp
+    src/ClientService.cpp
+    src/SocketAccess.cpp
+    src/SessionData.cpp
 )
 
 add_executable(${SERVER}

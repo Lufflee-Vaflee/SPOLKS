@@ -21,8 +21,10 @@ struct ServerConfig {
     std::uint16_t backlog;
 };
 
-template<ENV_CONFIG>
+template<ENV::CONFIG_t>
 class Server {
     static_assert(false);   //should use specialization
 };
+
 }
+

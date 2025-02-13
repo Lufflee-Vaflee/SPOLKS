@@ -1,5 +1,7 @@
 #pragma once
 
+namespace ENV {
+
 #cmakedefine OS_ENV "@OS_ENV@"
 
 enum OS_t {
@@ -32,11 +34,14 @@ consteval OS_t reflection() {
 
 }
 
-struct ENV_CONFIG {
-    constexpr ENV_CONFIG(OS_t os) :
+struct CONFIG_t {
+    constexpr CONFIG_t(OS_t os) :
         OS(os) {}
 
     OS_t OS;
 };
 
-constexpr auto ENV = ENV_CONFIG { reflection() };
+constexpr auto CONFIG = CONFIG_t { reflection() };
+
+}
+

@@ -22,7 +22,7 @@ int main() {
         128
     };
 
-    tcp::Server<ENV> server{ conf };
+    tcp::Server<ENV::CONFIG> server{ conf };
     auto& pool = DummyThreadPool::getInstance();
 
     signal(SIGINT, signal_handler);
