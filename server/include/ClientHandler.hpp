@@ -8,18 +8,18 @@ namespace tcp {
 
 class ClientHandler final : public ServerHandler {
    public:
-    ClientHandler(ServerInterface& ref, socket_t socket);
+    ClientHandler(ServerInterface& ref, share_socket socket);
 
    public:
     virtual error_t operator()() override final;
 
    private:
     std::optional<Protocol::Header> process_head(data_t::const_iterator to_process);
-    void produce_task(std::atomic<uint32_t>& context, std::shared_ptr<data_t> to_process, Protocol::Header const& head);
+    void produce_task(std::shared_ptr<data_t> to_process, data_t::const_iterator begin, data_t::const_iterator end, Protocol::command_t cmd);
 
    private:
     ServerInterface& m_ref;
-    SocketAccess m_socket;
+    share_socket m_socket;
     data_t m_accumulate;
     pool::DummyThreadPool& m_pool = pool::DummyThreadPool::getInstance();
 

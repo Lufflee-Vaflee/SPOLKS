@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iostream>
+
 #include "Server.hpp"
 #include "Protocol.hpp"
 
@@ -34,7 +36,7 @@ data_t getEcho(const_iterator begin, const_iterator end) {
     std::uint32_t size = end - begin; // safe, cause payload size is uint32_t
     it = serialize(it, Header{
         CUR_VERSION,
-        TIME,
+        ECHO,
         size
     });
 
@@ -43,26 +45,42 @@ data_t getEcho(const_iterator begin, const_iterator end) {
     return responce;
 }
 
-
-data_t processQuery(std::shared_ptr<data_t> bufferOwnership, command_t command, const_iterator begin, const_iterator end) {
+data_t getClose() {
     data_t responce;
+    char message[] = "Closing connection by request";
+    auto it = serialize(std::back_inserter(responce), Header{
+        CUR_VERSION,
+        CLOSE,
+        sizeof(message)
+    });
 
-    switch(command) {
-    case TIME:
-        return getTime();
-        break;
-    case ECHO:
-        return getEcho(begin, end);
-        break;
-    case CLOSE:
-        break;
-    case UPLOAD:
-        break;
-    case DOWNLOAD:
-        break;
+    serialize(it, message);
+    return responce;
+}
+
+
+std::pair<data_t, error_t> processQuery(std::shared_ptr<data_t> bufferOwnership, command_t command, const_iterator begin, const_iterator end) {
+    try {
+        switch(command) {
+        case TIME:
+            return {getTime(), 0};
+            break;
+        case ECHO:
+            return {getEcho(begin, end), 0};
+            break;
+        case CLOSE:
+            return {getClose(), -1};
+            break;
+        case UPLOAD:
+            break;
+        case DOWNLOAD:
+            break;
+        }
+    } catch(std::exception exc) {
+        std::cout << exc.what();
     }
 
-    return responce;
+    return {{}, 0};
 }
 
 };

@@ -4,7 +4,10 @@
 
 #include <mutex>
 
+#include <unistd.h>
+
 namespace tcp {
+
 
 class SocketAccess {
    public:
@@ -24,10 +27,16 @@ class SocketAccess {
         return m_socket;
     }
 
+    ~SocketAccess() {
+        close(m_socket);
+    }
+
    private:
     socket_t m_socket;
     mutable std::mutex m_mutex;
 };
+
+using share_socket = std::shared_ptr<SocketAccess>;
 
 class ServerInterface {
    public:

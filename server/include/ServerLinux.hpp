@@ -33,8 +33,9 @@ class SessionData {
     using pollIndex = std::vector<pollfd>::iterator;
 
    public:
-    SessionData(timePoint const& lastUse, std::shared_ptr<ClientHandler> handler) :
+    SessionData(timePoint const& lastUse, share_socket socket, std::shared_ptr<ClientHandler> handler) :
         m_lastUse(lastUse.load()),
+        m_socket(socket),
         m_clientHandler(handler),
         m_softClose(false) {}
 
@@ -43,11 +44,13 @@ class SessionData {
 
     SessionData(SessionData&& other) :
         m_lastUse(other.m_lastUse.load()),
+        m_socket(std::move(other.m_socket)),
         m_clientHandler(std::move(other.m_clientHandler)),
         m_softClose(other.m_softClose.load()) {}
 
     SessionData& operator=(SessionData&& other) {
         m_lastUse = other.m_lastUse.load();
+        m_socket = std::move(other.m_socket);
         m_clientHandler = std::move(other.m_clientHandler);
         m_softClose = other.m_softClose.load();
 
@@ -56,6 +59,8 @@ class SessionData {
 
    public:
     timePoint m_lastUse;
+
+    share_socket m_socket;
     std::shared_ptr<ClientHandler> m_clientHandler;
 
     std::atomic<bool> m_softClose = false;
@@ -160,9 +165,8 @@ class Server<CONFIG> final : public ServerInterface {
                     }
 
                     if((revents & POLLPRI) || (revents & POLLERR) || (revents & POLLHUP)) {
-                        pool.go([this, sock](){
-                            closeConnection(sock);
-                        });
+                        perror("Socket error during poll, closing");
+                        closeConnection(sock);
                         continue;
                     }
 
@@ -211,11 +215,13 @@ class Server<CONFIG> final : public ServerInterface {
             0
         });
 
+        share_socket socket = std::make_shared<SocketAccess>(socket_raw);
         auto it = m_FDindexing.emplace( 
             socket_raw, 
             SessionData {
                 clock::now(),
-                std::make_shared<ClientHandler>(*static_cast<ServerInterface*>(this), socket_raw)
+                socket,
+                std::make_shared<ClientHandler>(*static_cast<ServerInterface*>(this), socket),
             }
         );
 
@@ -342,13 +348,13 @@ class Server<CONFIG> final : public ServerInterface {
                 }
 
                 if(it->second.m_softClose) {
-                    close(poll.fd);
                     hardClear++;
                     m_FDindexing.erase(it);
                     return true;
                 }
 
                 if((clock::now() - it->second.m_lastUse.load()) > timeout) {
+                    softClear++;
                     closeConnection(poll.fd);
                 }
 
@@ -369,9 +375,6 @@ class Server<CONFIG> final : public ServerInterface {
         std::cout << "closing all connections\n";
         checkForClear(true);
         std::cout << "closing active connections\n";
-        for(auto it = m_pollingFD.begin(); it != m_pollingFD.end(); ++it) {
-            //close(it->fd);
-        }
         m_pollingFD.clear();
         m_FDindexing.clear();
     }
