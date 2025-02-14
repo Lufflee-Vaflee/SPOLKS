@@ -7,12 +7,12 @@
 
 namespace tcp {
 
-class ClientHandler final : public ServerHandler {
+class ClientHandler {
    public:
     ClientHandler(ServerInterface& ref, share_socket socket);
 
    public:
-    virtual error_t operator()() override final;
+    virtual error_t operator()();
 
    private:
     std::optional<Protocol::Header> process_head(data_t::const_iterator to_process);
@@ -26,5 +26,10 @@ class ClientHandler final : public ServerHandler {
 
    private:
     static constexpr std::size_t INITIAL_CAPACITY = 2048;
+
 };
+
+static_assert(Handler<ClientHandler>);
+
 }
+

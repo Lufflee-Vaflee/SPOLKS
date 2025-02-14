@@ -11,6 +11,7 @@ set( SOURCES
     src/ClientService.cpp
     src/SocketAccess.cpp
     src/SessionData.cpp
+    src/ServerLinux.cpp
 )
 
 add_executable(${SERVER}

@@ -1,15 +1,17 @@
 #pragma once
 
-namespace ENV {
+#include <cstdint>
+#include <chrono>
 
 #cmakedefine OS_ENV "@OS_ENV@"
+#cmakedefine OS_ENV_CODE @OS_ENV_CODE@
+
+namespace ENV {
 
 enum OS_t {
     LINUX = 0,
     WINDOWS = 1
 };
-
-namespace {
 
 consteval bool str_equals(const char* str1, const char* str2) {
     while (*str1 && *str2) {
@@ -32,7 +34,7 @@ consteval OS_t reflection() {
     }
 }
 
-}
+static_assert(reflection() == OS_ENV_CODE);
 
 struct CONFIG_t {
     constexpr CONFIG_t(OS_t os) :
@@ -42,6 +44,52 @@ struct CONFIG_t {
 };
 
 constexpr auto CONFIG = CONFIG_t { reflection() };
+
+}
+
+namespace tcp {
+
+template<ENV::CONFIG_t CONFIG = ENV::CONFIG>
+struct selector {
+   private:
+    static auto getSocket_t() {
+        if constexpr (CONFIG.OS == ENV::OS_t::LINUX) {
+            int t;
+            return t;
+        } else if constexpr(CONFIG.OS == ENV::OS_t::WINDOWS) {
+            if constexpr (sizeof(void*) == 4) {
+                uint32_t t;
+                return t;
+            } else {
+                uint64_t t;
+                return t;
+            }
+        } else {
+            //unknown OS
+            static_assert(false);
+        }
+    }
+
+   public:
+    using socket_t = decltype(getSocket_t());
+};
+
+
+using socket_t = selector<>::socket_t;
+using error_t = int64_t;
+
+using data_t = std::vector<uint8_t>;
+
+struct ServerConfig {
+    using duration = std::chrono::milliseconds;
+
+    std::uint16_t port;
+    duration pollTimeout;
+    duration defaultSocketTimeout;
+    duration forceClearDuration;
+    std::uint16_t forceClearPercent;
+    std::uint16_t backlog;
+};
 
 }
 

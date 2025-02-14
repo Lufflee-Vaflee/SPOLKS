@@ -38,7 +38,6 @@ class DummyThreadPool {
     bool go(task_t&& service);
     atomic_state const& get_state_ref();
 
-
    private:
     void pool_entry();
 

@@ -11,7 +11,6 @@
 namespace tcp {
 
 AcceptHandler::AcceptHandler(ServerInterface& ref, socket_t socket) :
-    ServerHandler(),
     m_ref(ref),
     m_socket(socket) {}
 

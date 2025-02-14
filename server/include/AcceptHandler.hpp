@@ -6,18 +6,21 @@
 
 namespace tcp {
 
-class AcceptHandler final : public ServerHandler {
+class AcceptHandler {
    public:
     AcceptHandler(ServerInterface& ref, socket_t socket);
 
-   private:
-    virtual error_t operator()() override final;
+   public:
+    virtual error_t operator()();
 
    private:
     ServerInterface& m_ref;
     SocketAccess m_socket;
     pool::DummyThreadPool& pool = pool::DummyThreadPool::getInstance();
+
 };
+
+static_assert(Handler<AcceptHandler>);
 
 }
 

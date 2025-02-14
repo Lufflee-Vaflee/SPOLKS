@@ -8,7 +8,6 @@
 namespace tcp {
 
 ClientHandler::ClientHandler(ServerInterface& ref, share_socket socket) :
-    ServerHandler(),
     m_ref(ref),
     m_socket(socket) {}
 
@@ -83,7 +82,7 @@ void ClientHandler::produce_task(std::shared_ptr<data_t> to_process, const_itera
     m_pool.go([to_process, begin, end, cmd, &ref = m_ref, socket = m_socket](){
         auto [responce, code] = service::processQuery(to_process, cmd, begin, end);
         //no need in synchronization here
-        //responces may be send in different order(close request too) and this is expected behaivour of protocol
+        //responces may be executed and sended in different order(close request too) and this is expected behaivour of protocol
         if(responce.size() != 0) {
             auto send_code = ref.sendMessage(*socket, responce.begin(), responce.end());
             code = send_code < 0 ? send_code : code;

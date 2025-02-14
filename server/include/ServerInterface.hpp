@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Server.hpp"
+#include "config.hpp"
 
 #include <unistd.h>
 
@@ -20,12 +20,11 @@ class ServerInterface {
     virtual ~ServerInterface() = default;
 };
 
-class ServerHandler {
-   public:
-    virtual error_t operator()() = 0;
-
-   public:
-    virtual ~ServerHandler() = default;
-};
-
+//no need in type-erasure and runtime interface
+template <typename T>
+concept Handler = 
+    requires(T t) {
+        { t.operator()() } -> std::same_as<error_t>;
+    };
+ 
 }

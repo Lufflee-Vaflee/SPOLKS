@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Server.hpp"
+#include "config.hpp"
 
 #include <mutex>
 

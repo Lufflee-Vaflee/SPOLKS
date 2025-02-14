@@ -1,7 +1,7 @@
 #include <iostream>
 #include <csignal>
 
-#include "ServerLinux.hpp"
+#include "Server.hpp"
 #include "ThreadPool.hpp"
 
 using namespace pool;
@@ -22,13 +22,13 @@ int main() {
         128
     };
 
-    tcp::Server<ENV::CONFIG> server{ conf };
+    tcp::Server server{ conf };
     auto& pool = DummyThreadPool::getInstance();
 
     signal(SIGINT, signal_handler);
 
     pool.reserve_service([&server, &pool](){
-        server.run(pool.get_state_ref());
+        server.start(pool.get_state_ref());
     });
 
     pool.start();

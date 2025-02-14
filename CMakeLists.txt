@@ -10,10 +10,17 @@ set(PROJECT_CONFIG_PATH "")
 
 function(generate_config)
     if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux" OR ${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-        set(OS_ENV ${CMAKE_SYSTEM_NAME} )
-    
+        set(OS_ENV ${CMAKE_SYSTEM_NAME})
+
+        if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+            set(OS_ENV_CODE "0x0")
+        endif()
+        if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+            set(OS_ENV_CODE "0x1")
+        endif()
+
         message(
-            STATUS "Supported operating system spotted: ${CMAKE_SYSTEM_NAME}"
+            STATUS "Supported operating system spotted: ${CMAKE_SYSTEM_NAME} ${OS_ENV_CODE}"
         )
 
         configure_file(
