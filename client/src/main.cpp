@@ -9,32 +9,40 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
+#include <fcntl.h>
 
 using namespace Protocol;
 using namespace tcp;
 
 tcp::error_t recieveMessage(socket_t socket, data_t& buf);
 tcp::error_t sendMessage(socket_t socket, const_iterator begin, const_iterator end);
+tcp::error_t sendQuery(socket_t socket);
+tcp::error_t process_data(data_t process, socket_t socket);
+
+bool listening_mode = false;
 
 
 int main(int argc, char* argv[]) {
    // Проверка на правильность аргументов
-    
     argc = 3;
     if (argc != 3) {
         std::cerr << "Использование: " << argv[0] << " <адрес> <порт>" << std::endl;
         return 1;
     }
 
-    const char* server_address = "localhost";//argv[1];
+    const char* server_address = "0.0.0.0";//argv[1];
     int server_port = 8080;//std::stoi(argv[2]);
 
     // Создаем сокет
-    int client_socket = socket(AF_INET, SOCK_STREAM, SOCK_NONBLOCK | SO_REUSEADDR);
+    
+    int client_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (client_socket == -1) {
-        std::cerr << "Error connectiong socket" << std::endl;
+        std::cerr << "Error connection socket " << errno << std::endl;
         return 1;
     }
+
+    int flags = fcntl(client_socket, F_GETFL, 0);
+    fcntl(client_socket, F_SETFL, flags | O_NONBLOCK);
 
     // Устанавливаем адрес сервера
     struct sockaddr_in server_addr;
@@ -50,9 +58,11 @@ int main(int argc, char* argv[]) {
 
     // Подключаемся к серверу
     if (connect(client_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        std::cerr << "Error connectiong to server" << std::endl;
-        close(client_socket);
-        return 1;
+        if(errno != EINPROGRESS) {
+            std::cerr << "Error connectiong to server" << errno << std::endl;
+            close(client_socket);
+            return 1;
+        }
     }
 
     std::cout << "Connected to server " << server_address << ":" << server_port << std::endl;
@@ -66,25 +76,19 @@ int main(int argc, char* argv[]) {
             break;
         }
 
-
-        // Если пользователь ввел "exit", выходим из цикла
-        if (std::strcmp(buffer, "exit") == 0) {
-            break;
+        std::string log;
+        if(recieve.size() != 0) {
+            std::copy(recieve.begin(), recieve.end(), std::back_inserter(log));
+            std::cout << log;
+            recieve.clear();
         }
 
-        // Отправляем сообщение серверу
-        if (send(client_socket, buffer, std::strlen(buffer), 0) == -1) {
-            break;
+        if(!listening_mode && recieve.size() != 0) {
+            if(sendQuery(client_socket) < 0) {
+                std::cout << "critical error during send query\n";
+                break;
+            }
         }
-
-        // Получаем ответ от сервера
-        ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
-        if (bytes_received == -1) {
-            break;
-        }
-
-        buffer[bytes_received] = '\0'; // Завершаем строку
-        std::cout << "Ответ от сервера: " << buffer << std::endl;
     }
 
     // Закрываем сокет
@@ -155,9 +159,10 @@ tcp::error_t sendMessage(socket_t socket, const_iterator begin, const_iterator e
 }
 
 std::optional<Protocol::Header> process_head(const_iterator it);
-void produce_task(const_iterator begin, const_iterator end, Protocol::command_t cmd);
+tcp::error_t produce_task(const_iterator begin, const_iterator end, Protocol::command_t cmd);
+std::pair<data_t, tcp::error_t> processResponce(command_t command, const_iterator begin, const_iterator end);
 
-tcp::error_t process_data(data_t process) {
+tcp::error_t process_data(data_t process, socket_t socket) {
     auto to_process = std::move(process);
     auto process_it = to_process.cbegin();
     while(process_it + sizeof(Header) <= to_process.cend()) {
@@ -174,7 +179,17 @@ tcp::error_t process_data(data_t process) {
         }
 
         auto end = begin + head.payload_size;
-        produce_task(begin, end, head.command);
+        auto [responce, code] = processResponce(head.command, begin, end);
+
+        if(code < 0) {
+             return code;
+        }
+        
+        if(responce.size() > 0) {
+            if(sendMessage(socket, responce.begin(), responce.end()) < 0) {
+                return -1;
+            }
+        }
 
         process_it = end;
     }
@@ -209,46 +224,83 @@ std::optional<Protocol::Header> process_head(const_iterator it) {
     return head;
 }
 
-void produce_task(const_iterator begin, const_iterator end, Protocol::command_t cmd) {
-    auto [responce, code] = service::processQuery(to_process, cmd, begin, end);
-    //no need in synchronization here
-    //responces may be executed and sended in different order(close request too) and this is expected behaivour of protocol
-    std::lock_guard lock {*socket};
-    if(responce.size() != 0) {
-        auto send_code = ref.sendMessage(*socket, responce.begin(), responce.end());
-        code = send_code < 0 ? send_code : code;
-    }
-
-    if(code < 0) {
-        ref.closeConnection(*socket);
-}
-
-int foo() {
-    using namespace Protocol;
-    std::cout << "starting client\n";
-
-    while(true) {
-        Protocol::command_t cmd;
-        std::cout << "Enter Command: \n";
-
-        uint16_t cmd_input;
-        std::cin >> cmd_input;
-        switch (cmd_input) {
-            case command_t::ECHO:
+std::pair<data_t, tcp::error_t> processResponce(command_t command, const_iterator begin, const_iterator end) {
+    try {
+        listening_mode = false;
+        switch(command) {
+        case TIME:
+            std::cout << "time responce recieved\n";
             break;
-            case command_t::TIME:
+        case ECHO:
+            std::cout << "echo responce recieved\n";
             break;
-            case command_t::UPLOAD:
-            return 0;
-            case command_t::DOWNLOAD:
-            return 0;
-            case command_t::CLOSE:
+        case CLOSE:
+            std::cout << "close responce recieved\n";
             break;
-            default:
-            throw "AAAAAAAAAAAA";
+        case UPLOAD:
+            break;
+        case DOWNLOAD:
+            listening_mode = true;
+            break;
         }
+    } catch(std::exception exc) {
+        std::cout << exc.what();
     }
 
-    return 0;
+    return {{}, 0};
 }
+
+tcp::error_t sendQuery(socket_t socket) {
+    std::cout << "enter command code:\n";
+
+    uint16_t cmd;
+    std::cin >> cmd;
+
+    data_t query;
+    std::string echo;
+    try {
+        switch(cmd) {
+        case TIME:
+            listening_mode = false;
+            serialize(back_inserter(query), Header {
+                CUR_VERSION,
+                command_t::TIME,
+                0
+            });
+            break;
+        case ECHO:
+            std::cout << "enter echo message\n";
+            std::cin >> echo;
+            serialize(std::back_inserter(query), Header {
+                CUR_VERSION,
+                command_t::ECHO,
+                (uint32_t)echo.size()
+            });
+
+            std::copy(echo.cbegin(), echo.cend(), std::back_inserter(query));
+            break;
+        case CLOSE:
+            serialize(std::back_inserter(query), Header{
+                CUR_VERSION,
+                command_t::CLOSE,
+                0
+            });
+            break;
+        case UPLOAD:
+            break;
+        case DOWNLOAD:
+            break;
+        default:
+            std::cout << "invalid command code\n";
+            return -1;
+        }
+    } catch(std::exception exc) {
+        std::cout << exc.what();
+    }
+
+    std::cout << query.size() << "\n";
+    return sendMessage(socket, query.begin(), query.end());
+}
+
+
 

@@ -19,7 +19,7 @@ Server::Server(ServerConfig const& config) :
     }
 
     int flags = fcntl(m_socket, F_GETFL, 0);
-    fcntl(m_socket, F_SETFL, flags | O_NONBLOCK | SO_REUSEADDR);
+    fcntl(m_socket, F_SETFL, flags | O_NONBLOCK);
 
     m_address.sin_family = AF_INET;
     m_address.sin_addr.s_addr = INADDR_ANY;
@@ -220,7 +220,8 @@ error_t Server::recieveMessage(socket_t socket, data_t& buf) {
 
         if(bytes_read < 0) {
             if(errno == EWOULDBLOCK || errno == EAGAIN) {
-               return 0; 
+                buf.resize(effective_size); //restore real size
+                return 0;
             }
 
             perror("Error while reading occured");

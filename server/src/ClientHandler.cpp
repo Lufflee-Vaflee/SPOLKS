@@ -4,6 +4,8 @@
 #include "Protocol.hpp"
 
 #include <unistd.h>
+#include <iostream>
+
 
 namespace tcp {
 
@@ -23,32 +25,33 @@ error_t ClientHandler::operator()() {
     }
 
     auto to_process = std::make_shared<data_t>(std::move(m_accumulate));
-    auto process_it = to_process->cbegin();
-    while(process_it + sizeof(Header) <= to_process->cend()) {
-        auto o_head = process_head(process_it);
+    std::size_t processed = 0;
+    std::size_t size = to_process->size();
+    while(processed + sizeof(Header) <= to_process->size()) {
+        auto o_head = process_head(to_process->begin() + processed);
         if(!o_head.has_value()) {
             return -1;
         }
 
         auto head = *o_head;
-        auto begin = process_it + sizeof(Header);
+        std::size_t payload_start = processed + sizeof(Header);
 
-        if(begin + head.payload_size > to_process->end()) {
+        if(payload_start + head.payload_size > to_process->size()) {
             break;
         }
 
+        auto begin = to_process->begin() + payload_start;
         auto end = begin + head.payload_size;
         produce_task(to_process, begin, end, head.command);
 
-        process_it = end;
+        processed = payload_start + head.payload_size;
     }
 
-    if(process_it == to_process->cbegin()) {
-        m_accumulate = std::move(*to_process);
+    if(processed == to_process->size()) {
         return 0;
     }
 
-    std::copy(process_it, to_process->cend(), m_accumulate.begin());
+    std::copy(to_process->cbegin() + processed, to_process->cend(), m_accumulate.begin());
 
     return 0;
 }
@@ -85,6 +88,9 @@ void ClientHandler::produce_task(std::shared_ptr<data_t> to_process, const_itera
         //responces may be executed and sended in different order(close request too) and this is expected behaivour of protocol
         if(responce.size() != 0) {
             //std::lock_guard lock {*socket};
+            std::string log;
+            std::copy(responce.begin(), responce.end(), std::back_inserter(log));
+            std::cout << "sended responce: " << log << std::endl;
             auto send_code = ref.sendMessage(*socket, responce.begin(), responce.end());
             code = send_code < 0 ? send_code : code;
         }
