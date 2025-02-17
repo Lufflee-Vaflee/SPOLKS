@@ -83,6 +83,12 @@ bool DummyThreadPool::go(task_t&& task) {
         return false;
     }
 
+    {
+        std::lock_guard lock {m_mutex};
+        m_tasks.push(std::move(task));
+        m_threads_to_start++;
+    }
+
     m_cond.notify_one();
 
     return true;

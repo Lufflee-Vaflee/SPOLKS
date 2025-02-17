@@ -15,7 +15,7 @@ int main() {
     using namespace std::chrono_literals;
     tcp::ServerConfig conf { 
         8080,
-        50ms,
+        1000ms,
         5min,
         10min,
         10,

@@ -50,8 +50,8 @@ error_t AcceptHandler::operator()(){
 
     code = m_ref.registerConnection(client_fd);
     if(code < 0) {
-        std::cout << "register connection failed socket descriptor already registered\n";
-        return -1;
+        std::cout << "register connection failed socket descriptor already registered " << client_fd << '\n';
+        return 0;
     }
 
     return 0;

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <limits>
 #include "Utils.hpp"
 
 namespace Protocol {
@@ -11,7 +10,7 @@ enum command_t : uint16_t {
     TIME        = 1,
     UPLOAD      = 2,
     DOWNLOAD    = 3,
-    CLOSE       = std::numeric_limits<uint16_t>::max()
+    CLOSE       = 4,
 };
 
 constexpr uint16_t CUR_VERSION = 001;

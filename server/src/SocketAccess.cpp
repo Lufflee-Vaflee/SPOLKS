@@ -1,6 +1,7 @@
 #include "SocketAccess.hpp"
 
 #include <unistd.h>
+#include <sys/socket.h>
 
 namespace tcp {
 
@@ -20,6 +21,7 @@ SocketAccess::operator socket_t() const {
 }
 
 SocketAccess::~SocketAccess() {
+    shutdown(m_socket, SHUT_RDWR);
     close(m_socket);
 }
 

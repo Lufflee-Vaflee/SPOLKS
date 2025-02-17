@@ -67,7 +67,7 @@ std::optional<Protocol::Header> ClientHandler::process_head(const_iterator it) {
                 command_t::CLOSE,
                 0
             });
-
+            //std::lock_guard lock {*m_socket};
             m_ref.sendMessage(*m_socket, data.begin(), data.end());
             m_ref.closeConnection(*m_socket);
         });
@@ -84,6 +84,7 @@ void ClientHandler::produce_task(std::shared_ptr<data_t> to_process, const_itera
         //no need in synchronization here
         //responces may be executed and sended in different order(close request too) and this is expected behaivour of protocol
         if(responce.size() != 0) {
+            //std::lock_guard lock {*socket};
             auto send_code = ref.sendMessage(*socket, responce.begin(), responce.end());
             code = send_code < 0 ? send_code : code;
         }

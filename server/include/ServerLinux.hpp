@@ -43,7 +43,7 @@ class Server final : public ServerInterface {
 
    private:
     void updateUsage(socket_t clientFD);
-    void checkForClear(bool force);
+    void checkForClear();
     void performPollClear();
     void closeAll();
 

@@ -26,7 +26,7 @@ Server::Server(ServerConfig const& config) :
     m_address.sin_port = htons(m_config.port);
 
     if (bind(m_socket, (struct sockaddr*)&m_address, sizeof(m_address)) < 0) {
-        std::cout << errno << '\n';
+        std::cout << errno;
         close(m_socket);
         throw "Bind Failed";
     }
@@ -50,7 +50,13 @@ void Server::start(atomic_state const& shutting_down) {
     pollfd server_pollfd = {m_socket, POLLIN | POLLPRI | POLLERR | POLLHUP, 0};
     m_pollingFD.push_back(server_pollfd);
 
+    bool force = false;
     while(shutting_down == state_t::Started) {
+        m_pool.go([this](){
+            checkForClear();
+        });
+
+        std::shared_lock lock{m_indexingMutex};
         int activity = poll(m_pollingFD.data(), m_pollingFD.size(), m_config.pollTimeout.count());
 
         if (activity < 0) {
@@ -61,54 +67,51 @@ void Server::start(atomic_state const& shutting_down) {
         if (activity == 0) {
             // Timeout occurred, you can perform other tasks
             std::cout << "No activity, waiting..." << std::endl;
-            checkForClear(true);
+            checkForClear();
             continue;
         }
 
-        {
-            std::shared_lock read_lock{m_indexingMutex};
-            for(std::size_t i = 0; i < m_pollingFD.size(); ++i) {
-                socket_t sock = m_pollingFD[i].fd;
-                auto revents = m_pollingFD[i].revents;
-                if(revents & POLLIN) {
-                    if(i == 0) {
-                        m_pool.go([this](){
-                            error_t code = (*m_acceptHandler)();
 
-                            if (code < 0) {
-                                std::cout << "critical error on accept socket, stopping server\n";
-                                m_pool.stop();
-                            }
-                        });
-                        continue;
-                    }
+        for(std::size_t i = 0; i < m_pollingFD.size(); ++i) {
+            socket_t sock = m_pollingFD[i].fd;
+            auto revents = m_pollingFD[i].revents;
+            if(revents & POLLIN) {
+                if(i == 0) {
+                    m_pool.go([this](){
+                        error_t code = (*m_acceptHandler)();
 
-                    auto it = m_FDindexing.find(sock);
-                    if(it == m_FDindexing.end()) {
-                        throw "poll event raised while indexing data doesnt exist";
-                    }
-
-                    auto handler = it->second.m_clientHandler;
-                    m_pool.go([handler](){
-                        (*handler)();
+                        if (code < 0) {
+                            std::cout << "critical error on accept socket, stopping server\n";
+                            m_pool.stop();
+                        }
                     });
                     continue;
                 }
 
-                if((revents & POLLPRI) || (revents & POLLERR) || (revents & POLLHUP)) {
-                    perror("Socket error during poll, closing");
-                    closeConnection(sock);
-                    continue;
+                auto it = m_FDindexing.find(sock);
+                if(it == m_FDindexing.end()) {
+                    throw "poll event raised while indexing data doesnt exist";
                 }
 
-                if(revents & POLLNVAL) {
-                    perror("poll on closed socket");
-                    throw "Critical error";
-                }
+                auto handler = it->second.m_clientHandler;
+                m_pool.go([handler](){
+                    (*handler)();
+                });
+                continue;
+            }
+
+            if((revents & POLLPRI) || (revents & POLLERR) || (revents & POLLHUP)) {
+                perror("Socket error during poll, closing");
+                closeConnection(sock);
+                continue;
+            }
+
+            if(revents & POLLNVAL) {
+                perror("poll on closed socket");
+                break;
             }
         }
 
-        checkForClear(false);
     }
 
     std::cout << "stopping server\n";
@@ -116,7 +119,7 @@ void Server::start(atomic_state const& shutting_down) {
 }
 
 void Server::closeConnection(socket_t socket) {
-    shutdown(socket, SHUT_RDWR); //no error check, multiply shutdown calls is possible and expected behaviour
+    shutdown(socket, SHUT_RD); //no error check, multiply shutdown calls is possible and expected behaviour
 
     m_pool.go([this, socket](){
         std::shared_lock lock{m_indexingMutex};
@@ -208,7 +211,7 @@ error_t Server::recieveMessage(socket_t socket, data_t& buf) {
         }
 
         buf.resize(effective_size + amortize_size);  //couldn't use capacity, because technically its UB
-        int bytes_read = read(socket, buf.end().base(), amortize_size);
+        int bytes_read = read(socket, buf.begin().base() + effective_size, amortize_size);
 
         if(bytes_read == 0) {
             std::cout << "gracefull socket shutdown: " << socket << "\n";
@@ -249,33 +252,33 @@ void Server::performPollClear() {
     std::size_t softClear = 0;
     std::size_t hardClear = 0;
 
-    {
-        std::unique_lock lock{m_indexingMutex};
+    if(m_pollingFD.size() <= 1) {
+        return;
+    }
 
-        if(m_pollingFD.size() <= 1) {
-            return;
+    std::erase_if(m_pollingFD, [this, timeout, &softClear, &hardClear](pollfd poll) {
+        if(poll.fd == m_socket) {
+            return false;
         }
 
-        auto it = std::remove_if(m_pollingFD.begin() + 1, m_pollingFD.end(), [this, timeout, &softClear, &hardClear](pollfd poll) {
-            auto it = m_FDindexing.find(poll.fd);
-            if(it == m_FDindexing.end()) {
-                throw "Indexing error occured";
-            }
+        auto it = m_FDindexing.find(poll.fd);
+        if(it == m_FDindexing.end()) {
+            throw "Indexing error occured";
+        }
 
-            if(it->second.m_softClose) {
-                hardClear++;
-                m_FDindexing.erase(it);
-                return true;
-            }
+        if(it->second.m_softClose) {
+            hardClear++;
+            m_FDindexing.erase(it);
+            return true;
+        }
 
-            if((clock::now() - it->second.m_lastUse.load()) > timeout) {
-                softClear++;
-                closeConnection(poll.fd);
-            }
+        if((clock::now() - it->second.m_lastUse.load()) > timeout) {
+            softClear++;
+            closeConnection(poll.fd);
+        }
 
-            return false;
-        });
-    }
+        return false;
+    });
 
     std::cout << "Soft clear polls: " << softClear << "\n";
     std::cout << "Expected: " << m_uncleardPolls << "\n";
@@ -285,19 +288,20 @@ void Server::performPollClear() {
     m_lastClear = clock::now();
 }
 
-void Server::checkForClear(bool force) {
+void Server::checkForClear() {
     std::cout << "Check for clear\n";
     bool timeCheck = (clock::now() - m_lastClear) > m_config.forceClearDuration;
     bool percentCheck = m_uncleardPolls > static_cast<std::size_t>((static_cast<double>(m_pollingFD.size()) / 100) * m_config.forceClearPercent);
 
-    if(force || timeCheck || percentCheck) {
+    if(timeCheck || percentCheck) {
+        std::unique_lock lock{m_indexingMutex};
         performPollClear();
     }
 }
 
 void Server::closeAll() {
     std::cout << "closing all connections\n";
-    checkForClear(true);
+    checkForClear();
     std::cout << "closing active connections\n";
     m_pollingFD.clear();
     m_FDindexing.clear();
