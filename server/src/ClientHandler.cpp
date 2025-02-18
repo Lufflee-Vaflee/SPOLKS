@@ -85,7 +85,7 @@ void ClientHandler::produce_task(std::shared_ptr<data_t> to_process, const_itera
     m_pool.go([to_process, begin, end, cmd, &ref = m_ref, socket = m_socket](){
         auto [responce, code] = service::processQuery(to_process, cmd, begin, end);
         //no need in synchronization here
-        //responces may be executed and sended in different order(close request too) and this is expected behaivour of protocol
+        //responces may be executed and sended(if needed) in different order(close request too) and this is expected behaivour of protocol
         if(responce.size() != 0) {
             //std::lock_guard lock {*socket};
             std::string log;

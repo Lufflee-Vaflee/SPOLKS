@@ -31,7 +31,7 @@ data_t getEcho(const_iterator begin, const_iterator end) {
         size
     });
 
-    std::copy(begin, end, responce.end());
+    std::copy(begin, end, std::back_inserter(responce));
 
     return responce;
 }

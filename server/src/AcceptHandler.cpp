@@ -31,23 +31,6 @@ error_t AcceptHandler::operator()(){
         return -1;
     }
 
-/*    using namespace Protocol;
-    data_t responce;
-    char message[] = "Oh hello there!";
-    auto it = serialize(std::back_inserter(responce), Header{
-        CUR_VERSION,
-        ECHO,
-        sizeof(message)
-    });
-
-    serialize(it, message);
-
-    error_t code = m_ref.sendMessage(client_fd, responce.begin(), responce.end());
-    if(code < 0) {
-        std::cout << "initial send message failed closing connection immidieatly\n";
-        close(client_fd);
-    }
-*/
     auto code = m_ref.registerConnection(client_fd);
     if(code < 0) {
         std::cout << "register connection failed socket descriptor already registered " << client_fd << '\n';

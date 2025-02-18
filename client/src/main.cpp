@@ -17,8 +17,7 @@ using namespace tcp;
 tcp::error_t recieveMessage(socket_t socket, data_t& buf);
 tcp::error_t sendMessage(socket_t socket, const_iterator begin, const_iterator end);
 tcp::error_t sendQuery(socket_t socket);
-tcp::error_t process_data(data_t process, socket_t socket);
-
+tcp::error_t process_data(data_t& process, socket_t socket);
 bool listening_mode = false;
 
 
@@ -76,14 +75,9 @@ int main(int argc, char* argv[]) {
             break;
         }
 
-        std::string log;
-        if(recieve.size() != 0) {
-            std::copy(recieve.begin(), recieve.end(), std::back_inserter(log));
-            std::cout << log;
-            recieve.clear();
-        }
+        process_data(recieve, client_socket);
 
-        if(!listening_mode && recieve.size() != 0) {
+        if(!listening_mode && recieve.size() == 0) {
             if(sendQuery(client_socket) < 0) {
                 std::cout << "critical error during send query\n";
                 break;
@@ -97,6 +91,7 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
 
 tcp::error_t recieveMessage(socket_t socket, data_t& buf) {
     constexpr std::size_t INITIAL_CAPACITY = 2048;
@@ -118,7 +113,8 @@ tcp::error_t recieveMessage(socket_t socket, data_t& buf) {
 
         if(bytes_read < 0) {
             if(errno == EWOULDBLOCK || errno == EAGAIN) {
-               return 0; 
+                buf.resize(effective_size);
+                return 0;
             }
 
             perror("Error while reading occured");
@@ -159,47 +155,37 @@ tcp::error_t sendMessage(socket_t socket, const_iterator begin, const_iterator e
 }
 
 std::optional<Protocol::Header> process_head(const_iterator it);
-tcp::error_t produce_task(const_iterator begin, const_iterator end, Protocol::command_t cmd);
 std::pair<data_t, tcp::error_t> processResponce(command_t command, const_iterator begin, const_iterator end);
 
-tcp::error_t process_data(data_t process, socket_t socket) {
+tcp::error_t process_data(data_t& process, socket_t socket) {
     auto to_process = std::move(process);
-    auto process_it = to_process.cbegin();
-    while(process_it + sizeof(Header) <= to_process.cend()) {
-        auto o_head = process_head(process_it);
+    std::size_t processed = 0;
+    std::size_t size = to_process.size();
+    while(processed + sizeof(Header) <= to_process.size()) {
+        auto o_head = process_head(to_process.begin() + processed);
         if(!o_head.has_value()) {
             return -1;
         }
 
         auto head = *o_head;
-        auto begin = process_it + sizeof(Header);
+        std::size_t payload_start = processed + sizeof(Header);
 
-        if(begin + head.payload_size > to_process.end()) {
-            break;
+        if(payload_start + head.payload_size > to_process.size()) {
+             break;
         }
 
+        auto begin = to_process.begin() + payload_start;
         auto end = begin + head.payload_size;
-        auto [responce, code] = processResponce(head.command, begin, end);
+        processResponce(head.command, begin, end);
 
-        if(code < 0) {
-             return code;
-        }
-        
-        if(responce.size() > 0) {
-            if(sendMessage(socket, responce.begin(), responce.end()) < 0) {
-                return -1;
-            }
-        }
-
-        process_it = end;
+        processed = payload_start + head.payload_size;
     }
 
-    if(process_it == to_process.cbegin()) {
-        process = std::move(to_process);
+    if(processed == to_process.size()) {
         return 0;
     }
 
-    std::copy(process_it, to_process.cend(), process.begin());
+    std::copy(to_process.cbegin() + processed, to_process.cend(), std::back_inserter(process));
 
     return 0;
 }
@@ -224,15 +210,17 @@ std::optional<Protocol::Header> process_head(const_iterator it) {
     return head;
 }
 
+std::pair<data_t, tcp::error_t> processTime(command_t command, const_iterator begin, const_iterator end);
+std::pair<data_t, tcp::error_t> processEcho(command_t command, const_iterator begin, const_iterator end);
+
 std::pair<data_t, tcp::error_t> processResponce(command_t command, const_iterator begin, const_iterator end) {
     try {
-        listening_mode = false;
         switch(command) {
         case TIME:
-            std::cout << "time responce recieved\n";
+            processTime(command, begin, end);
             break;
         case ECHO:
-            std::cout << "echo responce recieved\n";
+            processEcho(command, begin, end);
             break;
         case CLOSE:
             std::cout << "close responce recieved\n";
@@ -240,13 +228,39 @@ std::pair<data_t, tcp::error_t> processResponce(command_t command, const_iterato
         case UPLOAD:
             break;
         case DOWNLOAD:
-            listening_mode = true;
             break;
         }
     } catch(std::exception exc) {
         std::cout << exc.what();
     }
 
+    listening_mode = false;
+
+    return {{}, 0};
+}
+
+std::pair<data_t, tcp::error_t> processTime(command_t command, const_iterator begin, const_iterator end) {
+    std::cout << "time responce recieved\n";
+    if(end - begin != sizeof(time_t)) {
+        throw "aaaa";
+    }
+
+    auto [time, _] = deserialize<time_t>(begin);
+    auto tm = localtime(&time);
+    std::cout << "year: " << tm->tm_year + 1900 << ", month: " << tm->tm_mon + 1 << ", day: " << tm->tm_mday 
+        << ", hour: " << tm->tm_hour << ", minute: " << tm->tm_min << ", second: " << tm->tm_sec << ", GMT: " << tm->tm_zone << '\n';
+
+    return {{}, 0};
+}
+
+std::pair<data_t, tcp::error_t> processEcho(command_t command, const_iterator begin, const_iterator end) {
+    std::cout << "echo responce recieved\n";
+
+    std::size_t size = end - begin;
+
+    std::string echo_msg;
+    std::copy(begin, end, std::back_inserter(echo_msg));
+    std::cout << echo_msg << '\n';
     return {{}, 0};
 }
 
@@ -261,7 +275,6 @@ tcp::error_t sendQuery(socket_t socket) {
     try {
         switch(cmd) {
         case TIME:
-            listening_mode = false;
             serialize(back_inserter(query), Header {
                 CUR_VERSION,
                 command_t::TIME,
@@ -298,6 +311,7 @@ tcp::error_t sendQuery(socket_t socket) {
         std::cout << exc.what();
     }
 
+    listening_mode = true;
     std::cout << query.size() << "\n";
     return sendMessage(socket, query.begin(), query.end());
 }
