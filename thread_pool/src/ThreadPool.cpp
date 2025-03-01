@@ -19,7 +19,7 @@ void DummyThreadPool::start() {
 
     state_t expected = state_t::Stopped;
     if(!m_state.compare_exchange_strong(expected, state_t::Launching)) {
-        throw "called start on non-stopped thread-pool";
+        throw std::domain_error("called start on non-stopped thread-pool");
     }
 
     std::cout << "launching thread-pool";
@@ -60,7 +60,7 @@ atomic_state const& DummyThreadPool::get_state_ref() {
 void DummyThreadPool::stop() {
     auto expected = state_t::Started;
     if(!m_state.compare_exchange_strong(expected, state_t::Stopping)) {
-        throw "Called stopped on non started pool";
+        throw std::domain_error("try stopping server on non-started thread pool");
     }
 
     m_cond.notify_all();
@@ -68,7 +68,7 @@ void DummyThreadPool::stop() {
 
 void DummyThreadPool::reserve_service(task_t&& service) {
     if(m_state != state_t::Stopped) {
-        throw "trying reserve service on non-stopped pool";
+        throw std::domain_error("trying reserve service on non-stopped pool");
     }
 
     {
@@ -96,7 +96,6 @@ bool DummyThreadPool::go(task_t&& task) {
 
 void DummyThreadPool::pool_entry() {
     auto id = std::this_thread::get_id();
-    std::cout << "starting thread with id: " << id << " \n";
 
     //theoretically, not to much sence in that, but still spooky to start consuming tasks before all threads initialized
     //so in case its quite cheap...
@@ -104,11 +103,9 @@ void DummyThreadPool::pool_entry() {
         std::this_thread::yield();
     }
 
-    std::cout << "Thread with id: " << id << " waited for other threads and start to recieve tasks\n";
     while(m_state == state_t::Started) {
         task_t task;
         {
-            std::cout << "Thread with id: " << id << " waiting for task on condition_variable\n";
             std::unique_lock lock {m_mutex};
             m_cond.wait(lock, [id, this] () {
                 std::cout << "Thread with id: " << id << " woke up\n";
@@ -116,23 +113,19 @@ void DummyThreadPool::pool_entry() {
             });
 
             if(m_state != state_t::Started) {
-                std::cout << "Thread with id: " << id << " closing because of pool state change\n";
                 return;
             }
 
             task = std::move(m_tasks.front());
 
-            std::cout << "Thread with id: " << id << " acquired task\n";
             m_tasks.pop();
         }
 
         if(m_state != state_t::Started) {
-            std::cout << "Thread with id: " << id << " closing because of pool state change\n";
             return;
         }
 
         try {
-            std::cout << "Thread with id: " << id << " start to execute task\n";
             task();
         } catch(std::exception exc) {
             std::cout << "exception occured: " << exc.what() << "\n";

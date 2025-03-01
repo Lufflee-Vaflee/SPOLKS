@@ -4,6 +4,8 @@
 #include "Server.hpp"
 #include "ThreadPool.hpp"
 
+#include "Task.hpp"
+
 using namespace pool;
 
 void signal_handler(int SIGNUM) {

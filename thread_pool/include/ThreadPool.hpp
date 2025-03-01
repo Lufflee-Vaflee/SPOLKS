@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <queue>
 
+
 namespace pool {
 
 enum state_t : int {
@@ -49,6 +50,9 @@ class DummyThreadPool {
     std::condition_variable m_cond;
     std::mutex m_mutex;
     std::queue<task_t> m_tasks;
+
+
+    std::vector<std::thread> handlers;
 };
 
 }
