@@ -86,7 +86,7 @@ bool DummyThreadPool::go(task_t&& task) {
     {
         std::lock_guard lock {m_mutex};
         m_tasks.push(std::move(task));
-        m_threads_to_start++;
+        m_task_load_approximation.fetch_add(1, std::memory_order_relaxed);
     }
 
     m_cond.notify_one();
@@ -127,6 +127,7 @@ void DummyThreadPool::pool_entry() {
 
         try {
             task();
+            m_task_load_approximation.fetch_add(-1, std::memory_order_relaxed);
         } catch(std::exception exc) {
             std::cout << "exception occured: " << exc.what() << "\n";
             continue;
@@ -135,6 +136,10 @@ void DummyThreadPool::pool_entry() {
             continue;
         }
     }
+}
+
+bool DummyThreadPool::getLoad() {
+    return m_task_load_approximation < m_threads_to_start;
 }
 
 }

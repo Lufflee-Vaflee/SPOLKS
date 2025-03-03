@@ -1,17 +1,17 @@
 #include <coroutine>
 #include <exception>
-#include <functional>
 
 #include "ThreadPool.hpp"
 
-// Awaitable that yields control back to the thread pool
-struct YieldAwaitable {
+struct PoolReshedule {
+    PoolReshedule(bool force = false) :
+        m_force(force) {}
+
     bool await_ready() const noexcept {
-        return false; // Never ready, always suspend
+        return !m_force && m_pool.getLoad();
     }
 
     void await_suspend(std::coroutine_handle<> handle) noexcept {
-        // Queue this task back into the thread pool
         m_pool.go([handle]() mutable {
             handle.resume();
         });
@@ -19,13 +19,13 @@ struct YieldAwaitable {
 
     void await_resume() noexcept {}
 
-
-    pool::DummyThreadPool& m_pool = pool::DummyThreadPool::getInstance();    
+    private:
+    bool m_force;
+    pool::DummyThreadPool& m_pool = pool::DummyThreadPool::getInstance();
 };
 
 // Task class that represents a coroutine that can yield execution back to the thread pool
 class Task {
-
 public:
     struct promise_type;
     using handler_type = std::coroutine_handle<promise_type>;
@@ -38,12 +38,8 @@ public:
             return Task{handler_type::from_promise(*this)};
         }
 
-        std::suspend_always initial_suspend() noexcept {
-            m_pool.go([handler = handler_type::from_promise(*this)]() mutable {
-                handler();
-            });
-
-            return {};
+        auto initial_suspend() noexcept {
+            return PoolReshedule{true};
         }
 
         std::suspend_never final_suspend() noexcept {
@@ -56,15 +52,44 @@ public:
 
         void return_void() noexcept {}
 
-        pool::DummyThreadPool& m_pool = pool::DummyThreadPool::getInstance();
+        bool setAwaiter() {
+        
+        }
+
+        private:
+        std::coroutine_handle<> m_awaiter = nullptr;
     };
 
+    class AwaitableTask {
+       friend class Task;
+       private:
+        AwaitableTask(handler_type awaitedTask) :
+            m_awaitedTask(awaitedTask) {}
 
+       public:
+        bool await_ready() const noexcept {
+            
+        }
 
-    // Constructor from a coroutine handle
-    explicit Task(handler_type handle) : handle_(handle) {}
+        bool await_suspend(std::coroutine_handle<> handle) noexcept {
+            
+        }
 
-    // Move constructor and assignment
+        void await_resume() noexcept {
+
+        }
+
+       private:
+        handler_type m_awaitedTask;
+    };
+
+    auto operator co_await() {
+        return AwaitableTask{this->handle_};
+    }
+
+    explicit Task(handler_type handle) : 
+        handle_(handle) {}
+
     Task(Task&& other) noexcept : handle_(other.handle_) {
         other.handle_ = nullptr;
     }
@@ -77,15 +102,10 @@ public:
         return *this;
     }
 
-    // Destructor to clean up the coroutine handle
-    ~Task() {
-        // No need to manually destroy the handle anymore
-        // The final_suspend returning std::suspend_never will handle destruction
-    }
-
     // Non-copyable
     Task(const Task&) = delete;
     Task& operator=(const Task&) = delete;
+    ~Task() { }
 
     // Check if the task is done
     bool is_done() const noexcept {
@@ -97,56 +117,6 @@ public:
         if (handle_ && !handle_.done()) {
             handle_();
         }
-    }
-
-    // Awaitable interface to allow direct co_await on Task objects
-    bool await_ready() noexcept {
-        // If the task is already done, we don't need to suspend
-        return is_done();
-    }
-
-    bool await_suspend(std::coroutine_handle<> awaiting_coroutine) noexcept {
-        if (is_done()) {
-            // If already done, don't suspend
-            return false;
-        }
-
-        try {
-            // Execute the awaited task directly in the current thread
-            resume();
-            
-            // If task is now done, resume awaiting coroutine
-            if (is_done()) {
-                return false; // Don't suspend
-            }
-            
-            // If not done, the task must have scheduled itself elsewhere
-            // Store the awaiting coroutine to resume it when this task completes
-            // This would require additional machinery to store and resume waiting coroutines
-            // which isn't implemented in this version
-            return true; // Suspend
-        } catch (...) {
-            // Something went wrong - don't suspend
-            return false;
-        }
-    }
-
-    void await_resume() {
-        // Check if there was an exception in the promise
-        if (handle_ && handle_.promise().exception) {
-            std::rethrow_exception(handle_.promise().exception);
-        }
-    }
-
-    // Conversion operator to std::move_only_function<void()> for compatibility with ThreadPool
-    operator std::move_only_function<void()>() && {
-        // Capture the handle by value in the lambda
-        auto h = handle_;
-        return [h]() mutable {
-            if (h && !h.done()) {
-                h();
-            }
-        };
     }
 
    private:

@@ -39,6 +39,8 @@ class DummyThreadPool {
     bool go(task_t&& service);
     atomic_state const& get_state_ref();
 
+    bool getLoad();
+
    private:
     void pool_entry();
 
@@ -50,7 +52,7 @@ class DummyThreadPool {
     std::condition_variable m_cond;
     std::mutex m_mutex;
     std::queue<task_t> m_tasks;
-
+    std::atomic<long long int> m_task_load_approximation = 0;
 
     std::vector<std::thread> handlers;
 };
